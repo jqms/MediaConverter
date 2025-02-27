@@ -21,6 +21,47 @@ Format Converter is a lightweight Windows utility that seamlessly adds context m
 - FFmpeg installed and accessible in system PATH
 - .NET Framework
 
+### 📥 Getting FFmpeg
+Format Converter needs a helper program called FFmpeg to convert your files. Here's how to install it:
+
+#### Easiest Method: Install with Winget (Windows Package Manager)
+
+1. **Install FFmpeg using Winget**:
+   - Press the Windows key, type "Command Prompt" or "PowerShell" and click on it to open
+   - Copy and paste this line, then press Enter:
+   ```
+   winget install ffmpeg
+   ```
+   - Wait for it to finish downloading and installing
+   
+2. **You're Done!** Format Converter will now be able to find FFmpeg automatically.
+
+#### Manual Installation Method
+If you prefer to install FFmpeg manually:
+
+1. **Download the FFmpeg Program**:
+   - Go to [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/)
+   - Click on "ffmpeg-release-essentials.zip" to download
+
+2. **Extract the Files**:
+   - Find the downloaded ZIP file in your Downloads folder
+   - Right-click on it and select "Extract All..."
+   - Choose a location that's easy to remember, like "C:\ffmpeg"
+   - Click "Extract"
+
+3. **Tell Windows Where to Find FFmpeg**:
+   - Right-click on the Start button and select "System"
+   - Click on "Advanced system settings" on the right
+   - At the bottom of the new window, click "Environment Variables"
+   - In the "System variables" box, find and click on "Path", then click "Edit"
+   - Click "New" and type in the path to the bin folder (e.g., "C:\ffmpeg\bin")
+   - Click "OK" on all open windows
+
+4. **Check if It Worked**:
+   - Press the Windows key, type "cmd" and click on Command Prompt
+   - Type `ffmpeg -version` and press Enter
+   - If you see information about FFmpeg (not an error), it's working!
+
 ### 💾 Installation
 1. Download the executable
 2. Run the application once to register context menus
@@ -98,3 +139,9 @@ FormatConverter.exe -unregister
 - Audio and video files can be muted (creates a new file with no sound)
 - Converted files are saved in the same directory as the original with the new extension
 - Batch conversion supports multiple input files with a single output format
+
+### ❓ Troubleshooting
+- **"FFmpeg is not recognized" error**: Make sure FFmpeg is correctly installed and added to your system PATH
+- **Conversion fails**: Check if FFmpeg supports the specific conversion between your chosen formats
+- **Missing context menu**: Try running the application again with administrator privileges
+- **Slow conversion**: Some formats (like WEBM) may take longer to process due to compression requirements
