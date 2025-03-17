@@ -909,9 +909,24 @@ namespace FormatConverter {
             }
         }
 
+        private static string GetVideoCodec(string gpuType) {
+            switch (gpuType) {
+                case "nvidia":
+                    return "h264_nvenc";
+                case "amd":
+                    return "h264_amf";
+                case "intel":
+                    return "h264_qsv";
+                default:
+                    return "libx264 -preset faster -crf 23";
+            }
+        }
+
         static void PerformCompressWithProgress(string input, string output, int targetSizeMB = 20) {
             string backupPath = null;
             bool isReplacing = File.Exists(output);
+            int compressionAttempt = 1;
+            int maxAttempts = 5;
 
             if (isReplacing) {
                 backupPath = Path.Combine(
@@ -932,194 +947,247 @@ namespace FormatConverter {
             Process ffmpegProcess = null;
 
             var compressTask = Task.Run(() => {
-                string inputExt = Path.GetExtension(input).ToLower();
-                var (inputType, _) = FormatMappings[inputExt];
-                string arguments = "";
+                bool compressionSuccessful = false;
+                string tempOutputPath = Path.Combine(
+                    Path.GetTempPath(),
+                    Path.GetFileNameWithoutExtension(output) + "_temp" + Path.GetExtension(output)
+                );
+                string currentInput = input;
+                string currentOutput = output;
 
-                var infoStartInfo = new ProcessStartInfo {
-                    FileName = "ffprobe",
-                    Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{input}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                };
-
-                using var infoProcess = new Process { StartInfo = infoStartInfo };
-                infoProcess.Start();
-                string durationStr = infoProcess.StandardOutput.ReadToEnd().Trim();
-                infoProcess.WaitForExit();
-
-                long targetSizeInBits = (long)(targetSizeMB * 0.95 * 8 * 1024 * 1024);
-                double duration = 0;
-
-                if (double.TryParse(durationStr, out duration) && duration > 0) {
-                    if (inputType == "video") {
-                        int videoBitrate = (int)((targetSizeInBits * 0.85) / duration);
-                        int audioBitrate = (int)((targetSizeInBits * 0.15) / duration);
-
-                        audioBitrate = Math.Min(256000, Math.Max(32000, audioBitrate));
-
-                        int crf = 23;
-                        
-                        if (videoBitrate < 500000) crf = 28;
-                        else if (videoBitrate < 1000000) crf = 26;
-                        else if (videoBitrate < 2000000) crf = 24;
-
-                        string gpuType = DetectGpuType();
-                        
-                        switch (gpuType) {
-                            case "nvidia":
-                                arguments = $"-hwaccel cuda -i \"{input}\" -c:v h264_nvenc -preset p2 " +
-                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
-                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            case "amd":
-                                arguments = $"-hwaccel d3d11va -i \"{input}\" -c:v h264_amf -quality balanced " +
-                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
-                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            case "intel":
-                                arguments = $"-hwaccel qsv -i \"{input}\" -c:v h264_qsv -preset medium " +
-                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
-                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            default:
-                                arguments = $"-i \"{input}\" -c:v libx264 -preset medium -crf {crf} " +
-                                        $"-maxrate {videoBitrate / 1000}k -bufsize {videoBitrate / 500}k " +
-                                        $"-c:a aac -b:a {audioBitrate / 1000}k -ac 2 -movflags +faststart \"{output}\"";
-                                break;
-                        }
-                    }
-                    else if (inputType == "audio") {
-                        int audioBitrate = (int)(targetSizeInBits / duration);
-
-                        int minBitrate = 32000;
-                        int maxBitrate = 320000;
-
-                        audioBitrate = Math.Min(maxBitrate, Math.Max(minBitrate, audioBitrate));
-
-                        arguments = $"-i \"{input}\" -c:a aac -b:a {audioBitrate / 1000}k -ac 2 \"{output}\"";
-                    }
-                }
-                else {
-                    if (inputType == "video") {
-                        int bitrate = targetSizeMB * 8000;
-                        
-                        string gpuType = DetectGpuType();
-                        
-                        switch (gpuType) {
-                            case "nvidia":
-                                arguments = $"-hwaccel cuda -i \"{input}\" -c:v h264_nvenc -preset p2 " +
-                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            case "amd":
-                                arguments = $"-hwaccel d3d11va -i \"{input}\" -c:v h264_amf -quality balanced " +
-                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            case "intel":
-                                arguments = $"-hwaccel qsv -i \"{input}\" -c:v h264_qsv -preset medium " +
-                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                            default:
-                                arguments = $"-i \"{input}\" -c:v libx264 -preset medium " +
-                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
-                                        $"-movflags +faststart \"{output}\"";
-                                break;
-                        }
-                    }
-                    else if (inputType == "audio") {
-                        int bitrate = Math.Min(320, Math.Max(64, targetSizeMB * 10));
-
-                        arguments = $"-i \"{input}\" -c:a aac -b:a {bitrate}k -ac 2 \"{output}\"";
-                    }
-                }
-
-                var startInfo = new ProcessStartInfo {
-                    FileName = "ffmpeg",
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    LoadUserProfile = false,
-                    ErrorDialog = false,
-                    WorkingDirectory = Path.GetDirectoryName(output),
-                    StandardErrorEncoding = System.Text.Encoding.UTF8
-                };
-
-                ffmpegProcess = new Process { StartInfo = startInfo };
-
-                TimeSpan totalDuration = TimeSpan.Zero;
-                TimeSpan currentTime = TimeSpan.Zero;
-
-                ffmpegProcess.ErrorDataReceived += (sender, e) => {
-                    if (string.IsNullOrEmpty(e.Data))
-                        return;
-
-                    string data = e.Data;
-
-                    if (totalDuration == TimeSpan.Zero) {
-                        var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                        if (durationMatch.Success) {
-                            int hours = int.Parse(durationMatch.Groups[1].Value);
-                            int minutes = int.Parse(durationMatch.Groups[2].Value);
-                            int seconds = int.Parse(durationMatch.Groups[3].Value);
-                            int milliseconds = int.Parse(durationMatch.Groups[4].Value) * 10;
-                            totalDuration = new TimeSpan(0, hours, minutes, seconds, milliseconds);
-                        }
+                while (!compressionSuccessful && compressionAttempt <= maxAttempts) {
+                    if (compressionAttempt > 1) {
+                        progressForm.BeginInvoke(new Action(() => {
+                            progressForm.SetStatusText($"Still exceeding size limit. Attempt {compressionAttempt}/{maxAttempts} with stronger compression...");
+                            progressForm.UpdateProgress(0);
+                        }));
+                        currentInput = output;
+                        currentOutput = tempOutputPath;
                     }
 
-                    var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                    if (timeMatch.Success) {
-                        int hours = int.Parse(timeMatch.Groups[1].Value);
-                        int minutes = int.Parse(timeMatch.Groups[2].Value);
-                        int seconds = int.Parse(timeMatch.Groups[3].Value);
-                        int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
-                        currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+                    string inputExt = Path.GetExtension(currentInput).ToLower();
+                    var (inputType, _) = FormatMappings[inputExt];
+                    string arguments = "";
 
-                        if (totalDuration != TimeSpan.Zero) {
-                            int percentage = (int)((currentTime.TotalMilliseconds / totalDuration.TotalMilliseconds) * 100);
-                            percentage = Math.Min(99, Math.Max(0, percentage));
+                    var infoStartInfo = new ProcessStartInfo {
+                        FileName = "ffprobe",
+                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{currentInput}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    };
 
-                            var forms = Application.OpenForms;
-                            foreach (Form form in forms) {
-                                if (form is ProgressForm progressForm) {
-                                    progressForm.BeginInvoke(new Action(() => {
-                                        progressForm.UpdateProgress(percentage);
-                                    }));
+                    using var infoProcess = new Process { StartInfo = infoStartInfo };
+                    infoProcess.Start();
+                    string durationStr = infoProcess.StandardOutput.ReadToEnd().Trim();
+                    infoProcess.WaitForExit();
+
+                    long targetSizeInBits = (long)(targetSizeMB * 0.95 * 8 * 1024 * 1024);
+                    double duration = 0;
+
+                    if (double.TryParse(durationStr, out duration) && duration > 0) {
+                        if (inputType == "video") {
+                            double bitrateReductionFactor = Math.Pow(0.7, compressionAttempt - 1);
+                            int videoBitrate = (int)((targetSizeInBits * 0.85 * bitrateReductionFactor) / duration);
+                            int audioBitrate = (int)((targetSizeInBits * 0.15 * bitrateReductionFactor) / duration);
+
+                            audioBitrate = Math.Min(256000, Math.Max(32000, audioBitrate));
+
+                            int baseCrf = 23;
+                            int crfIncrease = (compressionAttempt - 1) * 3;
+                            int crf = baseCrf + crfIncrease;
+                            crf = Math.Min(32, crf);
+                            
+                            if (videoBitrate < 500000) crf = Math.Min(32, crf + 5);
+                            else if (videoBitrate < 1000000) crf = Math.Min(32, crf + 3);
+                            else if (videoBitrate < 2000000) crf = Math.Min(32, crf + 1);
+
+                            string gpuType = DetectGpuType();
+                            
+                            switch (gpuType) {
+                                case "nvidia":
+                                    string preset = compressionAttempt == 1 ? "p2" : "p7";
+                                    arguments = $"-hwaccel cuda -i \"{currentInput}\" -c:v h264_nvenc -preset {preset} " +
+                                            $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                            $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                            $"-movflags +faststart \"{currentOutput}\"";
                                     break;
+                                case "amd":
+                                    string quality = compressionAttempt == 1 ? "balanced" : "speed";
+                                    arguments = $"-hwaccel d3d11va -i \"{currentInput}\" -c:v h264_amf -quality {quality} " +
+                                            $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                            $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                            $"-movflags +faststart \"{currentOutput}\"";
+                                    break;
+                                case "intel":
+                                    string intelPreset = compressionAttempt == 1 ? "medium" : "faster";
+                                    arguments = $"-hwaccel qsv -i \"{currentInput}\" -c:v h264_qsv -preset {intelPreset} " +
+                                            $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                            $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                            $"-movflags +faststart \"{currentOutput}\"";
+                                    break;
+                                default:
+                                    string cpuPreset = compressionAttempt == 1 ? "medium" : (compressionAttempt == 2 ? "faster" : "veryfast");
+                                    arguments = $"-i \"{currentInput}\" -c:v libx264 -preset {cpuPreset} -crf {crf} " +
+                                            $"-maxrate {videoBitrate / 1000}k -bufsize {videoBitrate / 500}k " +
+                                            $"-c:a aac -b:a {audioBitrate / 1000}k -ac 2 -movflags +faststart \"{currentOutput}\"";
+                                    break;
+                            }
+                        }
+                        else if (inputType == "audio") {
+                            double bitrateReductionFactor = Math.Pow(0.8, compressionAttempt - 1);
+                            int audioBitrate = (int)(targetSizeInBits * bitrateReductionFactor / duration);
+
+                            int minBitrate = 24000;
+                            int maxBitrate = 320000;
+
+                            audioBitrate = Math.Min(maxBitrate, Math.Max(minBitrate, audioBitrate));
+
+                            arguments = $"-i \"{currentInput}\" -c:a aac -b:a {audioBitrate / 1000}k -ac 2 \"{currentOutput}\"";
+                        }
+                    }
+                    else {
+                        if (inputType == "video") {
+                            int bitrate = targetSizeMB * 8000;
+                            
+                            string gpuType = DetectGpuType();
+                            
+                            switch (gpuType) {
+                                case "nvidia":
+                                    arguments = $"-hwaccel cuda -i \"{input}\" -c:v h264_nvenc -preset p2 " +
+                                            $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                            $"-movflags +faststart \"{output}\"";
+                                    break;
+                                case "amd":
+                                    arguments = $"-hwaccel d3d11va -i \"{input}\" -c:v h264_amf -quality balanced " +
+                                            $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                            $"-movflags +faststart \"{output}\"";
+                                    break;
+                                case "intel":
+                                    arguments = $"-hwaccel qsv -i \"{input}\" -c:v h264_qsv -preset medium " +
+                                            $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                            $"-movflags +faststart \"{output}\"";
+                                    break;
+                                default:
+                                    arguments = $"-i \"{input}\" -c:v libx264 -preset medium " +
+                                            $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                            $"-movflags +faststart \"{output}\"";
+                                    break;
+                            }
+                        }
+                        else if (inputType == "audio") {
+                            int bitrate = Math.Min(320, Math.Max(64, targetSizeMB * 10));
+
+                            arguments = $"-i \"{input}\" -c:a aac -b:a {bitrate}k -ac 2 \"{output}\"";
+                        }
+                    }
+
+                    var startInfo = new ProcessStartInfo {
+                        FileName = "ffmpeg",
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        LoadUserProfile = false,
+                        ErrorDialog = false,
+                        WorkingDirectory = Path.GetDirectoryName(output),
+                        StandardErrorEncoding = System.Text.Encoding.UTF8
+                    };
+
+                    ffmpegProcess = new Process { StartInfo = startInfo };
+
+                    TimeSpan totalDuration = TimeSpan.Zero;
+                    TimeSpan currentTime = TimeSpan.Zero;
+
+                    ffmpegProcess.ErrorDataReceived += (sender, e) => {
+                        if (string.IsNullOrEmpty(e.Data))
+                            return;
+
+                        string data = e.Data;
+
+                        if (totalDuration == TimeSpan.Zero) {
+                            var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
+                            if (durationMatch.Success) {
+                                int hours = int.Parse(durationMatch.Groups[1].Value);
+                                int minutes = int.Parse(durationMatch.Groups[2].Value);
+                                int seconds = int.Parse(durationMatch.Groups[3].Value);
+                                int milliseconds = int.Parse(durationMatch.Groups[4].Value) * 10;
+                                totalDuration = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+                            }
+                        }
+
+                        var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
+                        if (timeMatch.Success) {
+                            int hours = int.Parse(timeMatch.Groups[1].Value);
+                            int minutes = int.Parse(timeMatch.Groups[2].Value);
+                            int seconds = int.Parse(timeMatch.Groups[3].Value);
+                            int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
+                            currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+
+                            if (totalDuration != TimeSpan.Zero) {
+                                int percentage = (int)((currentTime.TotalMilliseconds / totalDuration.TotalMilliseconds) * 100);
+                                percentage = Math.Min(99, Math.Max(0, percentage));
+
+                                var forms = Application.OpenForms;
+                                foreach (Form form in forms) {
+                                    if (form is ProgressForm progressForm) {
+                                        progressForm.BeginInvoke(new Action(() => {
+                                            progressForm.UpdateProgress(percentage);
+                                        }));
+                                        break;
+                                    }
                                 }
                             }
                         }
+                    };
+
+                    progressForm.Invoke(new Action(() => {
+                        progressForm.SetStatusText($"Compressing to {targetSizeMB}MB...");
+                        progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
+                    }));
+
+
+                    ffmpegProcess.Start();
+                    ffmpegProcess.BeginErrorReadLine();
+                    ffmpegProcess.WaitForExit();
+
+                    if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
+                        throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}");
                     }
-                };
 
-                progressForm.Invoke(new Action(() => {
-                    progressForm.SetStatusText($"Compressing to {targetSizeMB}MB...");
-                    progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
-                }));
-
-
-                ffmpegProcess.Start();
-                ffmpegProcess.BeginErrorReadLine();
-                ffmpegProcess.WaitForExit();
-
-                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
-                    throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}");
-                }
-
-                if (File.Exists(output)) {
-                    var fileInfo = new FileInfo(output);
-                    if (fileInfo.Length > targetSizeMB * 1024 * 1024) {
-                        progressForm.BeginInvoke(new Action(() => {
-                            progressForm.SetStatusText($"Warning: File still exceeds {targetSizeMB}MB");
-                        }));
+                    if (File.Exists(currentOutput)) {
+                        var fileInfo = new FileInfo(currentOutput);
+                        if (fileInfo.Length > targetSizeMB * 1024 * 1024 && compressionAttempt < maxAttempts) {
+                            compressionAttempt++;
+                            
+                            if (compressionAttempt > 1 && currentOutput == tempOutputPath) {
+                                File.Copy(tempOutputPath, output, true);
+                            }
+                        }
+                        else {
+                            compressionSuccessful = true;
+                            
+                            if (compressionAttempt > 1 && currentOutput == tempOutputPath) {
+                                File.Copy(tempOutputPath, output, true);
+                                try {
+                                    File.Delete(tempOutputPath);
+                                } catch {}
+                            }
+                            
+                            if (fileInfo.Length > targetSizeMB * 1024 * 1024) {
+                                progressForm.BeginInvoke(new Action(() => {
+                                    progressForm.SetStatusText($"Warning: After {compressionAttempt} attempts, file still exceeds {targetSizeMB}MB");
+                                }));
+                            } else {
+                                progressForm.BeginInvoke(new Action(() => {
+                                    progressForm.SetStatusText($"Successfully compressed after {compressionAttempt} {(compressionAttempt > 1 ? "attempts" : "attempt")}");
+                                }));
+                            }
+                        }
+                    }
+                    else {
+                        compressionSuccessful = true;
                     }
                 }
 
