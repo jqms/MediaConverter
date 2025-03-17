@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Drawing.Drawing2D;
 using System.Text.RegularExpressions;
+using System.Management;
 
 namespace FormatConverter {
     class Program {
@@ -72,6 +73,108 @@ namespace FormatConverter {
             { ".heic", ("image", ImageConversions) }
         };
 
+        private static string detectedGpu = null;
+
+        static string DetectGpuType()
+        {
+            if (detectedGpu != null)
+                return detectedGpu;
+
+            var gpuInfo = new System.Text.StringBuilder();
+            gpuInfo.AppendLine("GPU Detection Information:");
+            gpuInfo.AppendLine("------------------------");
+            
+            try 
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "ffmpeg",
+                    Arguments = "-hide_banner -hwaccels",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    string output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit();
+                    
+                    gpuInfo.AppendLine("FFmpeg Hardware Accelerators:");
+                    gpuInfo.AppendLine(output);
+                    
+                    if (output.Contains("cuda") || output.Contains("nvenc"))
+                    {
+                        detectedGpu = "nvidia";
+                        gpuInfo.AppendLine("Detected NVIDIA GPU via FFmpeg");
+                    }
+                    else if (output.Contains("amf") || output.Contains("d3d11va"))
+                    {
+                        detectedGpu = "amd";
+                        gpuInfo.AppendLine("Detected AMD GPU via FFmpeg");
+                    }
+                    else if (output.Contains("qsv"))
+                    {
+                        detectedGpu = "intel";
+                        gpuInfo.AppendLine("Detected Intel GPU via FFmpeg");
+                    }
+                }
+                
+                if (detectedGpu == null)
+                {
+                    startInfo = new ProcessStartInfo
+                    {
+                        FileName = "wmic",
+                        Arguments = "path win32_VideoController get name",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        CreateNoWindow = true
+                    };
+
+                    using (var process = Process.Start(startInfo))
+                    {
+                        string output = process.StandardOutput.ReadToEnd().ToLower();
+                        process.WaitForExit();
+                        
+                        gpuInfo.AppendLine("\nWMIC GPU Detection:");
+                        gpuInfo.AppendLine(output);
+                        
+                        if (output.Contains("nvidia"))
+                        {
+                            detectedGpu = "nvidia";
+                            gpuInfo.AppendLine("Detected NVIDIA GPU via WMIC");
+                        }
+                        else if (output.Contains("amd") || output.Contains("radeon"))
+                        {
+                            detectedGpu = "amd";
+                            gpuInfo.AppendLine("Detected AMD GPU via WMIC");
+                        }
+                        else if (output.Contains("intel"))
+                        {
+                            detectedGpu = "intel";
+                            gpuInfo.AppendLine("Detected Intel GPU via WMIC");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                gpuInfo.AppendLine($"Error detecting GPU: {ex.Message}");
+            }
+            
+            if (detectedGpu == null)
+            {
+                detectedGpu = "generic";
+                gpuInfo.AppendLine("No specific GPU detected, using generic settings");
+            }
+            
+            gpuInfo.AppendLine($"\nFinal GPU Type: {detectedGpu}");
+            
+            //MessageBox.Show(gpuInfo.ToString(), "GPU Detection Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            
+            return detectedGpu;
+        }
+
         [STAThread]
         static void Main(string[] args) {
             Application.EnableVisualStyles();
@@ -94,9 +197,84 @@ namespace FormatConverter {
                     return;
                 }
 
+                if (!IsFfmpegInstalled())
+                {
+                    if (!InstallFfmpeg())
+                    {
+                        return;
+                    }
+                }
+
                 RegisterContextMenus();
-                MessageBox.Show("Done! Right-click a file and select 'Convert To' to convert it.", "Info");
+                CustomMessageBox.Show(
+                    "Right-click on a file to convert it to another format.",
+                    "Success", 
+                    MessageBoxButtons.OK, 
+                    MessageBoxIcon.Information);
                 return;
+            }
+
+            static bool InstallFfmpeg()
+            {
+                try
+                {
+                    var result = CustomMessageBox.Show(
+                        "FFmpeg is required but not found on your system.\n\nWould you like to install it now using winget?",
+                        "FFmpeg Required",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        var startInfo = new ProcessStartInfo
+                        {
+                            FileName = "winget",
+                            Arguments = "install ffmpeg",
+                            UseShellExecute = true,
+                            CreateNoWindow = false
+                        };
+
+                        using var process = Process.Start(startInfo);
+                        process.WaitForExit();
+
+                        if (process.ExitCode == 0)
+                        {
+                            CustomMessageBox.Show(
+                                "FFmpeg was installed successfully. You may need to restart the application.", 
+                                "Installation Complete", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Information);
+                            return true;
+                        }
+                        else
+                        {
+                            CustomMessageBox.Show(
+                                "FFmpeg installation failed. Please install FFmpeg manually.", 
+                                "Installation Failed", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Error);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        CustomMessageBox.Show(
+                            "FFmpeg is required for this application to work.", 
+                            "FFmpeg Required", 
+                            MessageBoxButtons.OK, 
+                            MessageBoxIcon.Warning);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CustomMessageBox.Show(
+                        $"Error during FFmpeg installation: {ex.Message}\n\nPlease install FFmpeg manually.", 
+                        "Error", 
+                        MessageBoxButtons.OK, 
+                        MessageBoxIcon.Error);
+                    return false;
+                }
             }
 
             if (args.Length == 1 && args[0] == "-unregister") {
@@ -174,7 +352,7 @@ namespace FormatConverter {
 
                 try {
                     if (File.Exists(outputFile)) {
-                        var result = MessageBox.Show(
+                        var result = CustomMessageBox.Show(
                             $"File already exists:\n{outputFile}\n\nDo you want to replace it?",
                             "File Exists",
                             MessageBoxButtons.YesNoCancel,
@@ -313,6 +491,32 @@ namespace FormatConverter {
                 }
             }
         }
+
+        static bool IsFfmpegInstalled()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "where",
+                    Arguments = "ffmpeg",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                return process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
 
         static bool IsAdministrator() {
             WindowsIdentity identity = WindowsIdentity.GetCurrent();
@@ -755,33 +959,39 @@ namespace FormatConverter {
 
                         audioBitrate = Math.Min(256000, Math.Max(32000, audioBitrate));
 
-                        string scale = "";
-                        if (targetSizeMB <= 20) {
-                            if (videoBitrate < 500000) scale = "scale=480:-2";
-                            else if (videoBitrate < 1000000) scale = "scale=640:-2";
-                            else scale = "scale=720:-2";
-                        }
-                        else if (targetSizeMB <= 50) {
-                            if (videoBitrate < 800000) scale = "scale=640:-2";
-                            else if (videoBitrate < 1500000) scale = "scale=720:-2";
-                            else scale = "scale=1280:-2";
-                        }
-                        else if (targetSizeMB <= 100) {
-                            if (videoBitrate < 1500000) scale = "scale=720:-2";
-                            else scale = "scale=1280:-2";
-                        }
-                        else {
-                            scale = "scale=1920:-2";
-                        }
-
                         int crf = 23;
-                        if (targetSizeMB <= 20) crf = 28;
-                        else if (targetSizeMB <= 50) crf = 26;
-                        else if (targetSizeMB <= 100) crf = 24;
+                        
+                        if (videoBitrate < 500000) crf = 28;
+                        else if (videoBitrate < 1000000) crf = 26;
+                        else if (videoBitrate < 2000000) crf = 24;
 
-                        arguments = $"-i \"{input}\" -vf \"{scale}\" -c:v libx264 -preset medium " +
-                                   $"-crf {crf} -maxrate {videoBitrate / 1000}k -bufsize {videoBitrate / 500}k " +
-                                   $"-c:a aac -b:a {audioBitrate / 1000}k -ac 2 -movflags +faststart \"{output}\"";
+                        string gpuType = DetectGpuType();
+                        
+                        switch (gpuType) {
+                            case "nvidia":
+                                arguments = $"-hwaccel cuda -i \"{input}\" -c:v h264_nvenc -preset p2 " +
+                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            case "amd":
+                                arguments = $"-hwaccel d3d11va -i \"{input}\" -c:v h264_amf -quality balanced " +
+                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            case "intel":
+                                arguments = $"-hwaccel qsv -i \"{input}\" -c:v h264_qsv -preset medium " +
+                                        $"-b:v {videoBitrate / 1000}k -maxrate {videoBitrate / 1000}k " +
+                                        $"-bufsize {videoBitrate / 500}k -c:a aac -b:a {audioBitrate / 1000}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            default:
+                                arguments = $"-i \"{input}\" -c:v libx264 -preset medium -crf {crf} " +
+                                        $"-maxrate {videoBitrate / 1000}k -bufsize {videoBitrate / 500}k " +
+                                        $"-c:a aac -b:a {audioBitrate / 1000}k -ac 2 -movflags +faststart \"{output}\"";
+                                break;
+                        }
                     }
                     else if (inputType == "audio") {
                         int audioBitrate = (int)(targetSizeInBits / duration);
@@ -796,11 +1006,32 @@ namespace FormatConverter {
                 }
                 else {
                     if (inputType == "video") {
-                        string scale = targetSizeMB <= 50 ? "scale=640:-2" : "scale=1280:-2";
                         int bitrate = targetSizeMB * 8000;
-
-                        arguments = $"-i \"{input}\" -vf \"{scale}\" -c:v libx264 -preset medium " +
-                                   $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 -movflags +faststart \"{output}\"";
+                        
+                        string gpuType = DetectGpuType();
+                        
+                        switch (gpuType) {
+                            case "nvidia":
+                                arguments = $"-hwaccel cuda -i \"{input}\" -c:v h264_nvenc -preset p2 " +
+                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            case "amd":
+                                arguments = $"-hwaccel d3d11va -i \"{input}\" -c:v h264_amf -quality balanced " +
+                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            case "intel":
+                                arguments = $"-hwaccel qsv -i \"{input}\" -c:v h264_qsv -preset medium " +
+                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                            default:
+                                arguments = $"-i \"{input}\" -c:v libx264 -preset medium " +
+                                        $"-b:v {bitrate / 10}k -c:a aac -b:a {Math.Min(128, targetSizeMB / 2)}k -ac 2 " +
+                                        $"-movflags +faststart \"{output}\"";
+                                break;
+                        }
                     }
                     else if (inputType == "audio") {
                         int bitrate = Math.Min(320, Math.Max(64, targetSizeMB * 10));
@@ -873,6 +1104,7 @@ namespace FormatConverter {
                     progressForm.SetStatusText($"Compressing to {targetSizeMB}MB...");
                     progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
                 }));
+
 
                 ffmpegProcess.Start();
                 ffmpegProcess.BeginErrorReadLine();
@@ -1420,6 +1652,9 @@ namespace FormatConverter {
             }
             else if (inputType == "video") {
                 string videoCodec, audioCodec, extraParams = "";
+                string baseCodec = "h264";
+                string gpuType = DetectGpuType();
+                string hwAccelParams = "";
 
                 switch (outputExt) {
                     case ".mp4":
@@ -1482,6 +1717,53 @@ namespace FormatConverter {
                         audioCodec = "-c:a aac -b:a 192k";
                         extraParams = "";
                         break;
+                }
+
+                if (!outputExt.Equals(".mp3") && !outputExt.Equals(".m4a") && !videoCodec.Contains("-vn")) {
+                    bool isH264 = videoCodec.Contains("libx264");
+                    bool isVP9 = videoCodec.Contains("libvpx-vp9");
+                    
+                    switch (gpuType) {
+                        case "nvidia":
+                            if (isH264) {
+                                string qualityParams = "";
+                                if (videoCodec.Contains("-preset")) {
+                                    qualityParams = "-preset p2";
+                                }
+                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel cuda -c:v h264_nvenc")
+                                                    .Replace("-crf 23", "")
+                                                    .Replace("-preset medium", "")
+                                                    .Replace("-preset slower", "")
+                                                    .Replace("-preset faster", "") + " " + qualityParams;
+                            }
+                            break;
+                        case "amd":
+                            if (isH264) {
+                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel d3d11va -c:v h264_amf")
+                                                    .Replace("-crf 23", "")
+                                                    .Replace("-crf 21", "")
+                                                    .Replace("-crf 28", "")
+                                                    .Replace("-preset medium", "-quality balanced")
+                                                    .Replace("-preset slower", "-quality quality")
+                                                    .Replace("-preset faster", "-quality speed");
+                            }
+                            break;
+                        case "intel":
+                            if (isH264) {
+                                string speedPreset = "-preset medium";
+                                if (videoCodec.Contains("-preset slower")) speedPreset = "-preset slow";
+                                if (videoCodec.Contains("-preset faster")) speedPreset = "-preset fast";
+                                
+                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel qsv -c:v h264_qsv")
+                                                    .Replace("-crf 23", "")
+                                                    .Replace("-crf 21", "")
+                                                    .Replace("-crf 28", "")
+                                                    .Replace("-preset medium", speedPreset)
+                                                    .Replace("-preset slower", speedPreset)
+                                                    .Replace("-preset faster", speedPreset);
+                            }
+                            break;
+                    }
                 }
 
                 arguments = $"-i \"{input}\" {videoCodec} {audioCodec} {extraParams} \"{output}\"";
@@ -1708,13 +1990,23 @@ namespace FormatConverter {
                 }
             }
 
+            
+
             public ProgressForm() {
+                try {
+                    this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                    this.ShowIcon = true;
+                }
+                catch {
+
+                }
                 this.Text = "Converting...";
                 this.TopMost = true;
                 this.ClientSize = new Size(360, 100);
                 this.FormBorderStyle = FormBorderStyle.None;
                 this.StartPosition = FormStartPosition.CenterScreen;
                 this.ControlBox = false;
+                this.DoubleBuffered = true;
 
                 this.BackColor = Color.Black;
 
@@ -1883,6 +2175,7 @@ namespace FormatConverter {
             }
 
             private void ProgressBarFill_Paint(object sender, PaintEventArgs e) {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 if (isErrorState) {
                     using (LinearGradientBrush brush = new LinearGradientBrush(
                                progressBarFill.ClientRectangle,
@@ -1953,6 +2246,9 @@ namespace FormatConverter {
                 else {
                     statusLabel.Text = "Preparing...";
                 }
+
+                string gpuType = DetectGpuType();
+                statusLabel.Text += $" ({gpuType})";
             }
 
             public void SetStatusText(string status) {
@@ -1995,6 +2291,268 @@ namespace FormatConverter {
                 }
 
                 base.Dispose(disposing);
+            }
+        }
+
+        class CustomMessageBox : Form
+        {
+            private Panel mainPanel;
+            private Label messageLabel;
+            private Label titleLabel;
+            private Button yesButton;
+            private Button noButton;
+            private Button okButton;
+            
+            [DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+            private static extern IntPtr CreateRoundRectRgn(
+                int nLeftRect,
+                int nTopRect,
+                int nRightRect,
+                int nBottomRect,
+                int nWidthEllipse,
+                int nHeightEllipse
+            );
+
+            [DllImport("user32.dll")]
+            public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+
+            [DllImport("user32.dll")]
+            public static extern bool ReleaseCapture();
+
+            private const int WM_NCLBUTTONDOWN = 0xA1;
+            private const int HT_CAPTION = 0x2;
+
+            public CustomMessageBox(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
+            {
+                int height = 120;
+                if (message == "FFmpeg is required but not found on your system.\n\nWould you like to install it now using winget?") height = 170;
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.StartPosition = FormStartPosition.CenterScreen;
+                this.Size = new Size(360, height);
+                this.BackColor = Color.Black;
+                this.ForeColor = Color.White;
+                this.Font = new Font("Segoe UI", 9F);
+                this.TopMost = true;
+                this.ControlBox = false;
+                this.DoubleBuffered = true;
+                
+                this.MouseDown += FormDragMouseDown;
+                
+                try {
+                    this.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                    this.ShowIcon = true;
+                } 
+                catch { }
+                
+                this.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, this.Width, this.Height, 8, 8));
+                
+                InitializeComponents(message, title, buttons, icon);
+            }
+
+            private void InitializeComponents(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
+            {
+                titleLabel = new Label {
+                    Text = title,
+                    Width = 336,
+                    Height = 25,
+                    Location = new Point(12, 12),
+                    Font = new Font("Segoe UI", 14F, FontStyle.Regular),
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    ForeColor = Color.White,
+                    BackColor = Color.Transparent
+                };
+
+                int height = 40;
+                if (title == "FFmpeg Required") height = 60;
+                messageLabel = new Label {
+                    Text = message,
+                    Width = 336,
+                    Height = height,
+                    Location = new Point(12, 45),
+                    Font = new Font("Segoe UI", 9F),
+                    ForeColor = Color.FromArgb(204, 204, 204),
+                    BackColor = Color.Transparent,
+                    TextAlign = ContentAlignment.TopLeft
+                };
+                
+                Label closeButton = new Label {
+                    Text = "✕",
+                    Size = new Size(24, 24),
+                    Location = new Point(Width - 30, 8),
+                    Font = new Font("Arial", 10F, FontStyle.Bold),
+                    ForeColor = Color.Gray,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Cursor = Cursors.Hand,
+                    BackColor = Color.Transparent
+                };
+                
+                closeButton.Click += (s, e) => { 
+                    this.DialogResult = DialogResult.Cancel;
+                    this.Close();
+                };
+                
+                closeButton.MouseEnter += (s, e) => closeButton.ForeColor = Color.White;
+                closeButton.MouseLeave += (s, e) => closeButton.ForeColor = Color.Gray;
+                
+                titleLabel.MouseDown += FormDragMouseDown;
+                messageLabel.MouseDown += FormDragMouseDown;
+                
+                if (buttons == MessageBoxButtons.YesNo)
+                {
+                    yesButton = new Button {
+                        Text = "Yes",
+                        Size = new Size(80, 30),
+                        Location = new Point(Width - 175, Height - 45),
+                        FlatStyle = FlatStyle.Flat,
+                        ForeColor = Color.White,
+                        BackColor = Color.FromArgb(0, 114, 255),
+                        Font = new Font("Segoe UI", 9F)
+                    };
+                    yesButton.FlatAppearance.BorderSize = 0;
+
+                    yesButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, yesButton.Width, yesButton.Height, 15, 15));
+                    
+                    noButton = new Button {
+                        Text = "No",
+                        Size = new Size(80, 30),
+                        Location = new Point(Width - 90, Height - 45),
+                        FlatStyle = FlatStyle.Flat,
+                        ForeColor = Color.White,
+                        BackColor = Color.FromArgb(60, 60, 60),
+                        Font = new Font("Segoe UI", 9F)
+                    };
+                    noButton.FlatAppearance.BorderSize = 0;
+
+                    noButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, noButton.Width, noButton.Height, 15, 15));
+                    
+                    yesButton.Click += (s, e) => { this.DialogResult = DialogResult.Yes; this.Close(); };
+                    noButton.Click += (s, e) => { this.DialogResult = DialogResult.No; this.Close(); };
+                    
+                    this.Controls.Add(yesButton);
+                    this.Controls.Add(noButton);
+                }
+                else
+                {
+                    okButton = new Button {
+                        Text = "OK",
+                        Size = new Size(80, 30),
+                        Location = new Point(Width - 90, Height - 45),
+                        FlatStyle = FlatStyle.Flat,
+                        ForeColor = Color.White,
+                        BackColor = Color.FromArgb(0, 114, 255),
+                        Font = new Font("Segoe UI", 9F)
+                    };
+                    okButton.FlatAppearance.BorderSize = 0;
+                    okButton.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, okButton.Width, okButton.Height, 15, 15));
+                    
+                    okButton.Click += (s, e) => { this.DialogResult = DialogResult.OK; this.Close(); };
+                    this.Controls.Add(okButton);
+                }
+
+                if (icon != MessageBoxIcon.None)
+                {
+                    Panel iconPanel = new Panel {
+                        Size = new Size(24, 24),
+                        Location = new Point(12, 45),
+                        BackColor = Color.Transparent
+                    };
+                    
+                    Color iconColor;
+                    switch (icon)
+                    {
+                        case MessageBoxIcon.Error:
+                            iconColor = Color.FromArgb(255, 100, 100);
+                            break;
+                        case MessageBoxIcon.Warning:
+                            iconColor = Color.FromArgb(255, 170, 0);
+                            break;
+                        case MessageBoxIcon.Question:
+                            iconColor = Color.FromArgb(0, 114, 255);
+                            break;
+                        case MessageBoxIcon.Information:
+                        default:
+                            iconColor = Color.FromArgb(0, 198, 255);
+                            break;
+                    }
+                    
+                    iconPanel.Paint += (s, e) => {
+                        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                        
+                        if (icon == MessageBoxIcon.Error)
+                        {
+                            using (Pen pen = new Pen(iconColor, 3)) {
+                                e.Graphics.DrawLine(pen, 4, 4, 20, 20);
+                                e.Graphics.DrawLine(pen, 4, 20, 20, 4);
+                            }
+                        }
+                        else if (icon == MessageBoxIcon.Warning)
+                        {
+                            using (Brush brush = new SolidBrush(iconColor)) {
+                                e.Graphics.FillPolygon(brush, new Point[] {
+                                    new Point(12, 2),
+                                    new Point(22, 20),
+                                    new Point(2, 20)
+                                });
+                            }
+                            using (Brush brush = new SolidBrush(Color.Black)) {
+                                e.Graphics.FillRectangle(brush, 11, 8, 2, 6);
+                                e.Graphics.FillRectangle(brush, 11, 16, 2, 2);
+                            }
+                        }
+                        else if (icon == MessageBoxIcon.Question)
+                        {
+                            using (Brush brush = new SolidBrush(iconColor)) {
+                                e.Graphics.FillEllipse(brush, 2, 2, 20, 20);
+                            }
+                            using (Brush brush = new SolidBrush(Color.White)) {
+                                Font font = new Font("Arial", 14, FontStyle.Bold);
+                                e.Graphics.DrawString("?", font, brush, 7, 1);
+                            }
+                        }
+                        else
+                        {
+                            using (Brush brush = new SolidBrush(iconColor)) {
+                                e.Graphics.FillEllipse(brush, 2, 2, 20, 20);
+                            }
+                            using (Brush brush = new SolidBrush(Color.White)) {
+                                Font font = new Font("Arial", 14, FontStyle.Bold);
+                                e.Graphics.DrawString("i", font, brush, 9, 2);
+                            }
+                        }
+                    };
+                    
+                    messageLabel.Location = new Point(45, 45);
+                    messageLabel.Width = 303;
+                    
+                    this.Controls.Add(iconPanel);
+                }
+                
+                this.Controls.Add(titleLabel);
+                this.Controls.Add(messageLabel);
+                this.Controls.Add(closeButton);
+                closeButton.BringToFront();
+            }
+            
+            private void FormDragMouseDown(object sender, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+                }
+            }
+            
+            public static DialogResult Show(string message, string title, MessageBoxButtons buttons, MessageBoxIcon icon)
+            {
+                using (var messageBox = new CustomMessageBox(message, title, buttons, icon))
+                {
+                    return messageBox.ShowDialog();
+                }
+            }
+            
+            public static DialogResult Show(string message, string title)
+            {
+                return Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.None);
             }
         }
     }
