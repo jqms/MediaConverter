@@ -1,14 +1,12 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Drawing.Drawing2D;
 using System.Text.RegularExpressions;
 
-namespace FormatConverter
-{
-    class Program
-    {
+namespace FormatConverter {
+    class Program {
         [DllImport("kernel32.dll")]
         private static extern IntPtr GetConsoleWindow();
 
@@ -75,28 +73,22 @@ namespace FormatConverter
         };
 
         [STAThread]
-        static void Main(string[] args)
-        {
+        static void Main(string[] args) {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            if (args.Length == 0)
-            {
-                if (!IsAdministrator())
-                {
-                    var procInfo = new ProcessStartInfo
-                    {
+            if (args.Length == 0) {
+                if (!IsAdministrator()) {
+                    var procInfo = new ProcessStartInfo {
                         UseShellExecute = true,
                         WorkingDirectory = Environment.CurrentDirectory,
                         FileName = Application.ExecutablePath,
                         Verb = "runas"
                     };
-                    try
-                    {
+                    try {
                         Process.Start(procInfo);
                     }
-                    catch
-                    {
+                    catch {
                     }
 
                     return;
@@ -107,23 +99,18 @@ namespace FormatConverter
                 return;
             }
 
-            if (args.Length == 1 && args[0] == "-unregister")
-            {
-                if (!IsAdministrator())
-                {
-                    var procInfo = new ProcessStartInfo
-                    {
+            if (args.Length == 1 && args[0] == "-unregister") {
+                if (!IsAdministrator()) {
+                    var procInfo = new ProcessStartInfo {
                         UseShellExecute = true,
                         WorkingDirectory = Environment.CurrentDirectory,
                         FileName = Application.ExecutablePath,
                         Verb = "runas"
                     };
-                    try
-                    {
+                    try {
                         Process.Start(procInfo);
                     }
-                    catch
-                    {
+                    catch {
                     }
 
                     return;
@@ -134,18 +121,15 @@ namespace FormatConverter
                 return;
             }
 
-            if (args.Length == 2 && args[1] == "mute")
-            {
+            if (args.Length == 2 && args[1] == "mute") {
                 string inputFile = args[0];
                 string extension = Path.GetExtension(inputFile);
                 string outputFile = Path.Combine(
                     Path.GetDirectoryName(inputFile),
                     Path.GetFileNameWithoutExtension(inputFile) + "_muted" + extension);
 
-                try
-                {
-                    if (File.Exists(outputFile))
-                    {
+                try {
+                    if (File.Exists(outputFile)) {
                         var result = MessageBox.Show(
                             $"File already exists:\n{outputFile}\n\nDo you want to replace it?",
                             "File Exists",
@@ -155,12 +139,10 @@ namespace FormatConverter
                         if (result == DialogResult.Cancel || result == DialogResult.No)
                             return;
 
-                        try
-                        {
+                        try {
                             File.Delete(outputFile);
                         }
-                        catch (Exception ex)
-                        {
+                        catch (Exception ex) {
                             MessageBox.Show($"Cannot replace existing file: {ex.Message}", "Error");
                             return;
                         }
@@ -169,8 +151,7 @@ namespace FormatConverter
                     PerformMuteWithProgress(inputFile, outputFile);
                     OpenFolderAndSelectFile(outputFile);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Error during muting: {ex.Message}", "Error");
                     Environment.Exit(1);
                 }
@@ -222,8 +203,7 @@ namespace FormatConverter
                 return;
             }
 
-            if (args.Length == 2 && (args[1] == "resize50" || args[1] == "resize75"))
-            {
+            if (args.Length == 2 && (args[1] == "resize50" || args[1] == "resize75")) {
                 string inputFile = args[0];
                 string extension = Path.GetExtension(inputFile);
                 string scale = args[1] == "resize50" ? "50%" : "75%";
@@ -232,10 +212,8 @@ namespace FormatConverter
                     Path.GetDirectoryName(inputFile),
                     Path.GetFileNameWithoutExtension(inputFile) + "_" + scale.Replace("%", "pct") + extension);
 
-                try
-                {
-                    if (File.Exists(outputFile))
-                    {
+                try {
+                    if (File.Exists(outputFile)) {
                         var result = MessageBox.Show(
                             $"File already exists:\n{outputFile}\n\nDo you want to replace it?",
                             "File Exists",
@@ -245,12 +223,10 @@ namespace FormatConverter
                         if (result == DialogResult.Cancel || result == DialogResult.No)
                             return;
 
-                        try
-                        {
+                        try {
                             File.Delete(outputFile);
                         }
-                        catch (Exception ex)
-                        {
+                        catch (Exception ex) {
                             MessageBox.Show($"Cannot replace existing file: {ex.Message}", "Error");
                             return;
                         }
@@ -259,8 +235,7 @@ namespace FormatConverter
                     PerformResizeWithProgress(inputFile, outputFile, scaleValue);
                     OpenFolderAndSelectFile(outputFile);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Error during resizing: {ex.Message}", "Error");
                     Environment.Exit(1);
                 }
@@ -268,18 +243,13 @@ namespace FormatConverter
                 return;
             }
 
-            if (args.Length > 1)
-            {
-                if (args.Length > 2)
-                {
+            if (args.Length > 1) {
+                if (args.Length > 2) {
                     string outputFormat = args.Last();
-                    try
-                    {
-                        foreach (var inputFile in args.Take(args.Length - 1))
-                        {
+                    try {
+                        foreach (var inputFile in args.Take(args.Length - 1)) {
                             string outputFile = Path.ChangeExtension(inputFile, outputFormat);
-                            if (File.Exists(outputFile))
-                            {
+                            if (File.Exists(outputFile)) {
                                 var result = MessageBox.Show(
                                     $"File already exists:\n{outputFile}\n\nDo you want to replace it?",
                                     "File Exists",
@@ -290,12 +260,10 @@ namespace FormatConverter
                                     return;
                                 if (result == DialogResult.No)
                                     continue;
-                                try
-                                {
+                                try {
                                     File.Delete(outputFile);
                                 }
-                                catch (Exception ex)
-                                {
+                                catch (Exception ex) {
                                     MessageBox.Show($"Cannot replace existing file: {ex.Message}", "Error");
                                     continue;
                                 }
@@ -306,21 +274,17 @@ namespace FormatConverter
 
                         MessageBox.Show("Batch conversion completed successfully.", "Info");
                     }
-                    catch (Exception ex)
-                    {
+                    catch (Exception ex) {
                         MessageBox.Show($"Error during batch conversion: {ex.Message}", "Error");
                         Environment.Exit(1);
                     }
                 }
-                else
-                {
+                else {
                     string inputFile = args[0];
                     string outputFormat = args[1];
                     string outputFile = Path.ChangeExtension(inputFile, outputFormat);
-                    try
-                    {
-                        if (File.Exists(outputFile))
-                        {
+                    try {
+                        if (File.Exists(outputFile)) {
                             var result = MessageBox.Show(
                                 $"File already exists:\n{outputFile}\n\nDo you want to replace it?",
                                 "File Exists",
@@ -330,12 +294,10 @@ namespace FormatConverter
                             if (result == DialogResult.Cancel || result == DialogResult.No)
                                 return;
 
-                            try
-                            {
+                            try {
                                 File.Delete(outputFile);
                             }
-                            catch (Exception ex)
-                            {
+                            catch (Exception ex) {
                                 MessageBox.Show($"Cannot replace existing file: {ex.Message}", "Error");
                                 return;
                             }
@@ -344,8 +306,7 @@ namespace FormatConverter
                         PerformConversionWithProgress(inputFile, outputFile);
                         OpenFolderAndSelectFile(outputFile);
                     }
-                    catch (Exception ex)
-                    {
+                    catch (Exception ex) {
                         MessageBox.Show($"Error during conversion: {ex.Message}", "Error");
                         Environment.Exit(1);
                     }
@@ -353,18 +314,15 @@ namespace FormatConverter
             }
         }
 
-        static bool IsAdministrator()
-        {
+        static bool IsAdministrator() {
             WindowsIdentity identity = WindowsIdentity.GetCurrent();
             WindowsPrincipal principal = new WindowsPrincipal(identity);
             return principal.IsInRole(WindowsBuiltInRole.Administrator);
         }
 
-        static void RegisterContextMenus()
-        {
+        static void RegisterContextMenus() {
             string execPath = Application.ExecutablePath;
-            foreach (var mapping in FormatMappings)
-            {
+            foreach (var mapping in FormatMappings) {
                 string extension = mapping.Key;
                 var (type, conversions) = mapping.Value;
 
@@ -382,8 +340,7 @@ namespace FormatConverter
 
                 using var toolsShellKey = toolsKey.CreateSubKey("shell");
 
-                if (type == "audio" || type == "video")
-                {
+                if (type == "audio" || type == "video") {
                     using var muteKey = toolsShellKey.CreateSubKey("Mute");
                     muteKey.SetValue("", "Mute");
                     using var muteCmdKey = muteKey.CreateSubKey("command");
@@ -394,35 +351,34 @@ namespace FormatConverter
                     compressKey.SetValue("SubCommands", "");
 
                     using var compressShellKey = compressKey.CreateSubKey("shell");
-            
+
                     using var compress10MB = compressShellKey.CreateSubKey("1_Compress_010MB");
                     compress10MB.SetValue("", "Compress to <10MB");
                     using var compress10MBCmd = compress10MB.CreateSubKey("command");
                     compress10MBCmd.SetValue("", $"\"{execPath}\" \"%1\" compress 10");
-                    
+
                     using var compress20MB = compressShellKey.CreateSubKey("2_Compress_020MB");
                     compress20MB.SetValue("", "Compress to <20MB");
                     using var compress20MBCmd = compress20MB.CreateSubKey("command");
                     compress20MBCmd.SetValue("", $"\"{execPath}\" \"%1\" compress 20");
-                    
+
                     using var compress50MB = compressShellKey.CreateSubKey("3_Compress_050MB");
                     compress50MB.SetValue("", "Compress to <50MB");
                     using var compress50MBCmd = compress50MB.CreateSubKey("command");
                     compress50MBCmd.SetValue("", $"\"{execPath}\" \"%1\" compress 50");
-                    
+
                     using var compress100MB = compressShellKey.CreateSubKey("4_Compress_100MB");
                     compress100MB.SetValue("", "Compress to <100MB");
                     using var compress100MBCmd = compress100MB.CreateSubKey("command");
                     compress100MBCmd.SetValue("", $"\"{execPath}\" \"%1\" compress 100");
-                    
+
                     using var compress500MB = compressShellKey.CreateSubKey("5_Compress_500MB");
                     compress500MB.SetValue("", "Compress to <500MB");
                     using var compress500MBCmd = compress500MB.CreateSubKey("command");
                     compress500MBCmd.SetValue("", $"\"{execPath}\" \"%1\" compress 500");
                 }
 
-                if (type == "image")
-                {
+                if (type == "image") {
                     using var resizeKey = toolsShellKey.CreateSubKey("Resize50");
                     resizeKey.SetValue("", "Resize to 50%");
                     using var resizeCmdKey = resizeKey.CreateSubKey("command");
@@ -434,8 +390,7 @@ namespace FormatConverter
                     resize75CmdKey.SetValue("", $"\"{execPath}\" \"%1\" resize75");
                 }
 
-                foreach (var format in conversions)
-                {
+                foreach (var format in conversions) {
                     if (format == extension.TrimStart('.'))
                         continue;
                     using var formatKey = shellKey.CreateSubKey(format.ToUpper());
@@ -446,47 +401,38 @@ namespace FormatConverter
             }
         }
 
-        static void UnregisterContextMenus()
-        {
-            foreach (var mapping in FormatMappings)
-            {
+        static void UnregisterContextMenus() {
+            foreach (var mapping in FormatMappings) {
                 string extension = mapping.Key;
-                try
-                {
+                try {
                     Registry.ClassesRoot.DeleteSubKeyTree($@"SystemFileAssociations\{extension}\shell\Convert To", false);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Error removing menu for {extension}: {ex.Message}", "Error");
                 }
             }
-            
-            try
-            {
+
+            try {
                 Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\MediaConverter", false);
             }
             catch { }
         }
 
-        static void PerformConversionWithProgress(string input, string output)
-        {
+        static void PerformConversionWithProgress(string input, string output) {
 
             string backupPath = null;
             bool isReplacing = File.Exists(output);
 
-            if (isReplacing)
-            {
+            if (isReplacing) {
                 backupPath = Path.Combine(
                     Path.GetDirectoryName(output),
                     Path.GetFileNameWithoutExtension(output) + ".backup" + Path.GetExtension(output)
                 );
 
-                try
-                {
+                try {
                     File.Copy(output, backupPath, true);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Warning: Could not create backup: {ex.Message}", "Backup Warning");
                     backupPath = null;
                 }
@@ -495,18 +441,15 @@ namespace FormatConverter
             using var progressForm = new ProgressForm();
             Process ffmpegProcess = null;
 
-            var conversionTask = Task.Run(() =>
-            {
+            var conversionTask = Task.Run(() => {
 
                 string inputExt = Path.GetExtension(input).ToLower();
                 string outputExt = Path.GetExtension(output).ToLower();
                 var (inputType, _) = FormatMappings[inputExt];
                 string arguments = "";
 
-                if (inputType == "image")
-                {
-                    switch (outputExt)
-                    {
+                if (inputType == "image") {
+                    switch (outputExt) {
                         case ".webp":
                             arguments = $"-i \"{input}\" -quality 90 -compression_level 6 \"{output}\"";
                             break;
@@ -521,13 +464,11 @@ namespace FormatConverter
                             arguments = $"-i \"{input}\" -compression_algo lzw \"{output}\"";
                             break;
                         case ".gif":
-                            if (inputExt == ".gif")
-                            {
+                            if (inputExt == ".gif") {
                                 arguments =
                                     $"-i \"{input}\" -lavfi \"fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos\" \"{output}\"";
                             }
-                            else
-                            {
+                            else {
                                 arguments = $"-i \"{input}\" \"{output}\"";
                             }
 
@@ -546,10 +487,8 @@ namespace FormatConverter
                             break;
                     }
                 }
-                else if (inputType == "audio")
-                {
-                    switch (outputExt)
-                    {
+                else if (inputType == "audio") {
+                    switch (outputExt) {
                         case ".mp3":
                             arguments = $"-i \"{input}\" -vn -codec:a libmp3lame -q:a 0 \"{output}\"";
                             break;
@@ -582,12 +521,10 @@ namespace FormatConverter
                             break;
                     }
                 }
-                else if (inputType == "video")
-                {
+                else if (inputType == "video") {
                     string videoCodec, audioCodec, extraParams = "";
 
-                    switch (outputExt)
-                    {
+                    switch (outputExt) {
                         case ".mp4":
                             videoCodec = "-c:v libx264 -crf 23 -preset medium";
                             audioCodec = "-c:a aac -b:a 192k";
@@ -652,15 +589,13 @@ namespace FormatConverter
 
                     arguments = $"-i \"{input}\" {videoCodec} {audioCodec} {extraParams} \"{output}\"";
 
-                    if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a")
-                    {
+                    if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a") {
                         arguments =
                             $"-i \"{input}\" -f lavfi -i color=c=black:s=1920x1080 -shortest {videoCodec} {audioCodec} {extraParams} \"{output}\"";
                     }
                 }
 
-                var startInfo = new ProcessStartInfo
-                {
+                var startInfo = new ProcessStartInfo {
                     FileName = "ffmpeg",
                     Arguments = arguments,
                     UseShellExecute = false,
@@ -678,18 +613,15 @@ namespace FormatConverter
                 TimeSpan duration = TimeSpan.Zero;
                 TimeSpan currentTime = TimeSpan.Zero;
 
-                ffmpegProcess.ErrorDataReceived += (sender, e) =>
-                {
+                ffmpegProcess.ErrorDataReceived += (sender, e) => {
                     if (string.IsNullOrEmpty(e.Data))
                         return;
 
                     string data = e.Data;
 
-                    if (duration == TimeSpan.Zero)
-                    {
+                    if (duration == TimeSpan.Zero) {
                         var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                        if (durationMatch.Success)
-                        {
+                        if (durationMatch.Success) {
                             int hours = int.Parse(durationMatch.Groups[1].Value);
                             int minutes = int.Parse(durationMatch.Groups[2].Value);
                             int seconds = int.Parse(durationMatch.Groups[3].Value);
@@ -699,26 +631,21 @@ namespace FormatConverter
                     }
 
                     var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                    if (timeMatch.Success)
-                    {
+                    if (timeMatch.Success) {
                         int hours = int.Parse(timeMatch.Groups[1].Value);
                         int minutes = int.Parse(timeMatch.Groups[2].Value);
                         int seconds = int.Parse(timeMatch.Groups[3].Value);
                         int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
                         currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-                        if (duration != TimeSpan.Zero)
-                        {
+                        if (duration != TimeSpan.Zero) {
                             int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
                             percentage = Math.Min(99, Math.Max(0, percentage));
 
                             var forms = Application.OpenForms;
-                            foreach (Form form in forms)
-                            {
-                                if (form is ProgressForm progressForm)
-                                {
-                                    progressForm.BeginInvoke(new Action(() =>
-                                    {
+                            foreach (Form form in forms) {
+                                if (form is ProgressForm progressForm) {
+                                    progressForm.BeginInvoke(new Action(() => {
                                         progressForm.UpdateProgress(percentage);
                                     }));
                                     break;
@@ -728,8 +655,7 @@ namespace FormatConverter
                     }
                 };
 
-                progressForm.Invoke(new Action(() =>
-                {
+                progressForm.Invoke(new Action(() => {
                     progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
                 }));
 
@@ -737,54 +663,42 @@ namespace FormatConverter
                 ffmpegProcess.BeginErrorReadLine();
                 ffmpegProcess.WaitForExit();
 
-                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled())
-                {
+                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
                     string errorSummary = "FFmpeg failed to complete the operation.";
                     throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}. {errorSummary}");
                 }
 
-                if (isReplacing && File.Exists(backupPath))
-                {
-                    try
-                    {
+                if (isReplacing && File.Exists(backupPath)) {
+                    try {
                         File.Delete(backupPath);
                     }
-                    catch
-                    {
+                    catch {
                     }
                 }
             });
 
-            conversionTask.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    progressForm.Invoke(new Action(() =>
-                    {
-                        if (!progressForm.WasCancelled())
-                        {
+            conversionTask.ContinueWith(t => {
+                if (t.IsFaulted) {
+                    progressForm.Invoke(new Action(() => {
+                        if (!progressForm.WasCancelled()) {
                             progressForm.SetError(t.Exception?.InnerException?.Message ?? "Unknown error");
                         }
-                        else
-                        {
+                        else {
                             progressForm.Close();
                         }
                     }));
                 }
-                else
-                {
+                else {
                     progressForm.Invoke(new Action(() => { progressForm.SetCompleted(); }));
                 }
             });
 
             Application.Run(progressForm);
 
-            try
-            {
+            try {
                 conversionTask.Wait();
             }
-            catch (AggregateException ae)
-            {
+            catch (AggregateException ae) {
                 if (ae.InnerException != null)
                     throw ae.InnerException;
                 throw;
@@ -1014,25 +928,21 @@ namespace FormatConverter
             }
         }
 
-        static void PerformMuteWithProgress(string input, string output)
-        {
+        static void PerformMuteWithProgress(string input, string output) {
 
             string backupPath = null;
             bool isReplacing = File.Exists(output);
 
-            if (isReplacing)
-            {
+            if (isReplacing) {
                 backupPath = Path.Combine(
                     Path.GetDirectoryName(output),
                     Path.GetFileNameWithoutExtension(output) + ".backup" + Path.GetExtension(output)
                 );
 
-                try
-                {
+                try {
                     File.Copy(output, backupPath, true);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Warning: Could not create backup: {ex.Message}", "Backup Warning");
                     backupPath = null;
                 }
@@ -1041,28 +951,23 @@ namespace FormatConverter
             using var progressForm = new ProgressForm();
             Process ffmpegProcess = null;
 
-            var muteTask = Task.Run(() =>
-            {
+            var muteTask = Task.Run(() => {
 
                 string inputExt = Path.GetExtension(input).ToLower();
                 var (inputType, _) = FormatMappings[inputExt];
                 string arguments;
 
-                if (inputType == "video")
-                {
+                if (inputType == "video") {
                     arguments = $"-i \"{input}\" -c:v copy -c:a aac -af \"volume=0\" \"{output}\"";
                 }
-                else if (inputType == "audio")
-                {
+                else if (inputType == "audio") {
                     arguments = $"-i \"{input}\" -af \"volume=0\" \"{output}\"";
                 }
-                else
-                {
+                else {
                     throw new Exception("Mute operation only supports audio and video files.");
                 }
 
-                var startInfo = new ProcessStartInfo
-                {
+                var startInfo = new ProcessStartInfo {
                     FileName = "ffmpeg",
                     Arguments = arguments,
                     UseShellExecute = false,
@@ -1080,18 +985,15 @@ namespace FormatConverter
                 TimeSpan duration = TimeSpan.Zero;
                 TimeSpan currentTime = TimeSpan.Zero;
 
-                ffmpegProcess.ErrorDataReceived += (sender, e) =>
-                {
+                ffmpegProcess.ErrorDataReceived += (sender, e) => {
                     if (string.IsNullOrEmpty(e.Data))
                         return;
 
                     string data = e.Data;
 
-                    if (duration == TimeSpan.Zero)
-                    {
+                    if (duration == TimeSpan.Zero) {
                         var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                        if (durationMatch.Success)
-                        {
+                        if (durationMatch.Success) {
                             int hours = int.Parse(durationMatch.Groups[1].Value);
                             int minutes = int.Parse(durationMatch.Groups[2].Value);
                             int seconds = int.Parse(durationMatch.Groups[3].Value);
@@ -1101,26 +1003,21 @@ namespace FormatConverter
                     }
 
                     var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                    if (timeMatch.Success)
-                    {
+                    if (timeMatch.Success) {
                         int hours = int.Parse(timeMatch.Groups[1].Value);
                         int minutes = int.Parse(timeMatch.Groups[2].Value);
                         int seconds = int.Parse(timeMatch.Groups[3].Value);
                         int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
                         currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-                        if (duration != TimeSpan.Zero)
-                        {
+                        if (duration != TimeSpan.Zero) {
                             int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
                             percentage = Math.Min(99, Math.Max(0, percentage));
 
                             var forms = Application.OpenForms;
-                            foreach (Form form in forms)
-                            {
-                                if (form is ProgressForm progressForm)
-                                {
-                                    progressForm.BeginInvoke(new Action(() =>
-                                    {
+                            foreach (Form form in forms) {
+                                if (form is ProgressForm progressForm) {
+                                    progressForm.BeginInvoke(new Action(() => {
                                         progressForm.UpdateProgress(percentage);
                                     }));
                                     break;
@@ -1130,8 +1027,7 @@ namespace FormatConverter
                     }
                 };
 
-                progressForm.Invoke(new Action(() =>
-                {
+                progressForm.Invoke(new Action(() => {
                     progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
                 }));
 
@@ -1139,78 +1035,62 @@ namespace FormatConverter
                 ffmpegProcess.BeginErrorReadLine();
                 ffmpegProcess.WaitForExit();
 
-                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled())
-                {
+                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
                     throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}");
                 }
 
-                if (isReplacing && File.Exists(backupPath))
-                {
-                    try
-                    {
+                if (isReplacing && File.Exists(backupPath)) {
+                    try {
                         File.Delete(backupPath);
                     }
-                    catch
-                    {
+                    catch {
                     }
                 }
             });
 
-            muteTask.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    progressForm.Invoke(new Action(() =>
-                    {
-                        if (!progressForm.WasCancelled())
-                        {
+            muteTask.ContinueWith(t => {
+                if (t.IsFaulted) {
+                    progressForm.Invoke(new Action(() => {
+                        if (!progressForm.WasCancelled()) {
                             progressForm.SetError(t.Exception?.InnerException?.Message ?? "Unknown error");
                         }
-                        else
-                        {
+                        else {
                             progressForm.Close();
                         }
                     }));
                 }
-                else
-                {
+                else {
                     progressForm.Invoke(new Action(() => { progressForm.SetCompleted(); }));
                 }
             });
 
             Application.Run(progressForm);
 
-            try
-            {
+            try {
                 muteTask.Wait();
             }
-            catch (AggregateException ae)
-            {
+            catch (AggregateException ae) {
                 if (ae.InnerException != null)
                     throw ae.InnerException;
                 throw;
             }
         }
 
-        static void PerformResizeWithProgress(string input, string output, string scale)
-        {
+        static void PerformResizeWithProgress(string input, string output, string scale) {
 
             string backupPath = null;
             bool isReplacing = File.Exists(output);
 
-            if (isReplacing)
-            {
+            if (isReplacing) {
                 backupPath = Path.Combine(
                     Path.GetDirectoryName(output),
                     Path.GetFileNameWithoutExtension(output) + ".backup" + Path.GetExtension(output)
                 );
 
-                try
-                {
+                try {
                     File.Copy(output, backupPath, true);
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Warning: Could not create backup: {ex.Message}", "Backup Warning");
                     backupPath = null;
                 }
@@ -1219,21 +1099,18 @@ namespace FormatConverter
             using var progressForm = new ProgressForm();
             Process ffmpegProcess = null;
 
-            var resizeTask = Task.Run(() =>
-            {
+            var resizeTask = Task.Run(() => {
 
                 string inputExt = Path.GetExtension(input).ToLower();
                 var (inputType, _) = FormatMappings[inputExt];
 
-                if (inputType != "image")
-                {
+                if (inputType != "image") {
                     throw new Exception("Resize operation only supports image files.");
                 }
 
                 string arguments = $"-i \"{input}\" -vf \"scale=iw*{scale}:ih*{scale}\" \"{output}\"";
 
-                var startInfo = new ProcessStartInfo
-                {
+                var startInfo = new ProcessStartInfo {
                     FileName = "ffmpeg",
                     Arguments = arguments,
                     UseShellExecute = false,
@@ -1250,8 +1127,7 @@ namespace FormatConverter
 
                 ffmpegProcess.ErrorDataReceived += (sender, e) => { };
 
-                progressForm.Invoke(new Action(() =>
-                {
+                progressForm.Invoke(new Action(() => {
                     progressForm.SetProcessInfo(ffmpegProcess, output, isReplacing, backupPath);
                 }));
 
@@ -1259,79 +1135,62 @@ namespace FormatConverter
                 ffmpegProcess.BeginErrorReadLine();
                 ffmpegProcess.WaitForExit();
 
-                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled())
-                {
+                if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
                     throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}");
                 }
 
-                if (isReplacing && File.Exists(backupPath))
-                {
-                    try
-                    {
+                if (isReplacing && File.Exists(backupPath)) {
+                    try {
                         File.Delete(backupPath);
                     }
-                    catch
-                    {
+                    catch {
                     }
                 }
             });
 
-            resizeTask.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    progressForm.Invoke(new Action(() =>
-                    {
-                        if (!progressForm.WasCancelled())
-                        {
+            resizeTask.ContinueWith(t => {
+                if (t.IsFaulted) {
+                    progressForm.Invoke(new Action(() => {
+                        if (!progressForm.WasCancelled()) {
                             progressForm.SetError(t.Exception?.InnerException?.Message ?? "Unknown error");
                         }
-                        else
-                        {
+                        else {
                             progressForm.Close();
                         }
                     }));
                 }
-                else
-                {
+                else {
                     progressForm.Invoke(new Action(() => { progressForm.SetCompleted(); }));
                 }
             });
 
             Application.Run(progressForm);
 
-            try
-            {
+            try {
                 resizeTask.Wait();
             }
-            catch (AggregateException ae)
-            {
+            catch (AggregateException ae) {
                 if (ae.InnerException != null)
                     throw ae.InnerException;
                 throw;
             }
         }
 
-        static void MuteMedia(string input, string output)
-        {
+        static void MuteMedia(string input, string output) {
             string inputExt = Path.GetExtension(input).ToLower();
             var (inputType, _) = FormatMappings[inputExt];
             string arguments;
-            if (inputType == "video")
-            {
+            if (inputType == "video") {
                 arguments = $"-i \"{input}\" -c:v copy -c:a aac -af \"volume=0\" \"{output}\"";
             }
-            else if (inputType == "audio")
-            {
+            else if (inputType == "audio") {
                 arguments = $"-i \"{input}\" -af \"volume=0\" \"{output}\"";
             }
-            else
-            {
+            else {
                 throw new Exception("Mute operation only supports audio and video files.");
             }
 
-            var startInfo = new ProcessStartInfo
-            {
+            var startInfo = new ProcessStartInfo {
                 FileName = "ffmpeg",
                 Arguments = arguments,
                 UseShellExecute = false,
@@ -1349,18 +1208,15 @@ namespace FormatConverter
             TimeSpan duration = TimeSpan.Zero;
             TimeSpan currentTime = TimeSpan.Zero;
 
-            process.ErrorDataReceived += (sender, e) =>
-            {
+            process.ErrorDataReceived += (sender, e) => {
                 if (string.IsNullOrEmpty(e.Data))
                     return;
 
                 string data = e.Data;
 
-                if (duration == TimeSpan.Zero)
-                {
+                if (duration == TimeSpan.Zero) {
                     var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                    if (durationMatch.Success)
-                    {
+                    if (durationMatch.Success) {
                         int hours = int.Parse(durationMatch.Groups[1].Value);
                         int minutes = int.Parse(durationMatch.Groups[2].Value);
                         int seconds = int.Parse(durationMatch.Groups[3].Value);
@@ -1370,26 +1226,21 @@ namespace FormatConverter
                 }
 
                 var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                if (timeMatch.Success)
-                {
+                if (timeMatch.Success) {
                     int hours = int.Parse(timeMatch.Groups[1].Value);
                     int minutes = int.Parse(timeMatch.Groups[2].Value);
                     int seconds = int.Parse(timeMatch.Groups[3].Value);
                     int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
                     currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-                    if (duration != TimeSpan.Zero)
-                    {
+                    if (duration != TimeSpan.Zero) {
                         int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
                         percentage = Math.Min(99, Math.Max(0, percentage));
 
                         var forms = Application.OpenForms;
-                        foreach (Form form in forms)
-                        {
-                            if (form is ProgressForm progressForm)
-                            {
-                                progressForm.BeginInvoke(new Action(() =>
-                                {
+                        foreach (Form form in forms) {
+                            if (form is ProgressForm progressForm) {
+                                progressForm.BeginInvoke(new Action(() => {
                                     progressForm.UpdateProgress(percentage);
                                 }));
                                 break;
@@ -1403,26 +1254,22 @@ namespace FormatConverter
             process.BeginErrorReadLine();
             process.WaitForExit();
 
-            if (process.ExitCode != 0)
-            {
+            if (process.ExitCode != 0) {
                 throw new Exception($"FFmpeg exited with code {process.ExitCode}");
             }
         }
 
-        static void ResizeImage(string input, string output, string scale)
-        {
+        static void ResizeImage(string input, string output, string scale) {
             string inputExt = Path.GetExtension(input).ToLower();
             var (inputType, _) = FormatMappings[inputExt];
 
-            if (inputType != "image")
-            {
+            if (inputType != "image") {
                 throw new Exception("Resize operation only supports image files.");
             }
 
             string arguments = $"-i \"{input}\" -vf \"scale=iw*{scale}:ih*{scale}\" \"{output}\"";
 
-            var startInfo = new ProcessStartInfo
-            {
+            var startInfo = new ProcessStartInfo {
                 FileName = "ffmpeg",
                 Arguments = arguments,
                 UseShellExecute = false,
@@ -1440,18 +1287,15 @@ namespace FormatConverter
             TimeSpan duration = TimeSpan.Zero;
             TimeSpan currentTime = TimeSpan.Zero;
 
-            process.ErrorDataReceived += (sender, e) =>
-            {
+            process.ErrorDataReceived += (sender, e) => {
                 if (string.IsNullOrEmpty(e.Data))
                     return;
 
                 string data = e.Data;
 
-                if (duration == TimeSpan.Zero)
-                {
+                if (duration == TimeSpan.Zero) {
                     var durationMatch = Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                    if (durationMatch.Success)
-                    {
+                    if (durationMatch.Success) {
                         int hours = int.Parse(durationMatch.Groups[1].Value);
                         int minutes = int.Parse(durationMatch.Groups[2].Value);
                         int seconds = int.Parse(durationMatch.Groups[3].Value);
@@ -1461,26 +1305,21 @@ namespace FormatConverter
                 }
 
                 var timeMatch = Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                if (timeMatch.Success)
-                {
+                if (timeMatch.Success) {
                     int hours = int.Parse(timeMatch.Groups[1].Value);
                     int minutes = int.Parse(timeMatch.Groups[2].Value);
                     int seconds = int.Parse(timeMatch.Groups[3].Value);
                     int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
                     currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-                    if (duration != TimeSpan.Zero)
-                    {
+                    if (duration != TimeSpan.Zero) {
                         int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
                         percentage = Math.Min(99, Math.Max(0, percentage));
 
                         var forms = Application.OpenForms;
-                        foreach (Form form in forms)
-                        {
-                            if (form is ProgressForm progressForm)
-                            {
-                                progressForm.BeginInvoke(new Action(() =>
-                                {
+                        foreach (Form form in forms) {
+                            if (form is ProgressForm progressForm) {
+                                progressForm.BeginInvoke(new Action(() => {
                                     progressForm.UpdateProgress(percentage);
                                 }));
                                 break;
@@ -1494,23 +1333,19 @@ namespace FormatConverter
             process.BeginErrorReadLine();
             process.WaitForExit();
 
-            if (process.ExitCode != 0)
-            {
+            if (process.ExitCode != 0) {
                 throw new Exception($"FFmpeg exited with code {process.ExitCode}");
             }
         }
 
-        static void ConvertMedia(string input, string output)
-        {
+        static void ConvertMedia(string input, string output) {
             string inputExt = Path.GetExtension(input).ToLower();
             string outputExt = Path.GetExtension(output).ToLower();
             var (inputType, _) = FormatMappings[inputExt];
             string arguments = "";
 
-            if (inputType == "image")
-            {
-                switch (outputExt)
-                {
+            if (inputType == "image") {
+                switch (outputExt) {
                     case ".webp":
                         arguments = $"-i \"{input}\" -quality 90 -compression_level 6 \"{output}\"";
                         break;
@@ -1525,14 +1360,12 @@ namespace FormatConverter
                         arguments = $"-i \"{input}\" -compression_algo lzw \"{output}\"";
                         break;
                     case ".gif":
-                        if (inputExt == ".gif")
-                        {
+                        if (inputExt == ".gif") {
 
                             arguments =
                                 $"-i \"{input}\" -lavfi \"fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos\" \"{output}\"";
                         }
-                        else
-                        {
+                        else {
                             arguments = $"-i \"{input}\" \"{output}\"";
                         }
 
@@ -1551,10 +1384,8 @@ namespace FormatConverter
                         break;
                 }
             }
-            else if (inputType == "audio")
-            {
-                switch (outputExt)
-                {
+            else if (inputType == "audio") {
+                switch (outputExt) {
                     case ".mp3":
                         arguments = $"-i \"{input}\" -vn -codec:a libmp3lame -q:a 0 \"{output}\"";
                         break;
@@ -1587,12 +1418,10 @@ namespace FormatConverter
                         break;
                 }
             }
-            else if (inputType == "video")
-            {
+            else if (inputType == "video") {
                 string videoCodec, audioCodec, extraParams = "";
 
-                switch (outputExt)
-                {
+                switch (outputExt) {
                     case ".mp4":
                         videoCodec = "-c:v libx264 -crf 23 -preset medium";
                         audioCodec = "-c:a aac -b:a 192k";
@@ -1657,15 +1486,13 @@ namespace FormatConverter
 
                 arguments = $"-i \"{input}\" {videoCodec} {audioCodec} {extraParams} \"{output}\"";
 
-                if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a")
-                {
+                if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a") {
                     arguments =
                         $"-i \"{input}\" -f lavfi -i color=c=black:s=1920x1080 -shortest {videoCodec} {audioCodec} {extraParams} \"{output}\"";
                 }
             }
 
-            var startInfo = new ProcessStartInfo
-            {
+            var startInfo = new ProcessStartInfo {
                 FileName = "ffmpeg",
                 Arguments = arguments,
                 UseShellExecute = false,
@@ -1683,19 +1510,16 @@ namespace FormatConverter
             TimeSpan duration = TimeSpan.Zero;
             TimeSpan currentTime = TimeSpan.Zero;
 
-            process.ErrorDataReceived += (sender, e) =>
-            {
+            process.ErrorDataReceived += (sender, e) => {
                 if (string.IsNullOrEmpty(e.Data))
                     return;
 
                 string data = e.Data;
 
-                if (duration == TimeSpan.Zero)
-                {
+                if (duration == TimeSpan.Zero) {
                     var durationMatch =
                         System.Text.RegularExpressions.Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                    if (durationMatch.Success)
-                    {
+                    if (durationMatch.Success) {
                         int hours = int.Parse(durationMatch.Groups[1].Value);
                         int minutes = int.Parse(durationMatch.Groups[2].Value);
                         int seconds = int.Parse(durationMatch.Groups[3].Value);
@@ -1705,26 +1529,21 @@ namespace FormatConverter
                 }
 
                 var timeMatch = System.Text.RegularExpressions.Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                if (timeMatch.Success)
-                {
+                if (timeMatch.Success) {
                     int hours = int.Parse(timeMatch.Groups[1].Value);
                     int minutes = int.Parse(timeMatch.Groups[2].Value);
                     int seconds = int.Parse(timeMatch.Groups[3].Value);
                     int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
                     currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-                    if (duration != TimeSpan.Zero)
-                    {
+                    if (duration != TimeSpan.Zero) {
                         int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
                         percentage = Math.Min(99, Math.Max(0, percentage));
 
                         var forms = Application.OpenForms;
-                        foreach (Form form in forms)
-                        {
-                            if (form is ProgressForm progressForm)
-                            {
-                                progressForm.BeginInvoke(new Action(() =>
-                                {
+                        foreach (Form form in forms) {
+                            if (form is ProgressForm progressForm) {
+                                progressForm.BeginInvoke(new Action(() => {
                                     progressForm.UpdateProgress(percentage);
                                 }));
                                 break;
@@ -1738,77 +1557,62 @@ namespace FormatConverter
             process.BeginErrorReadLine();
             process.WaitForExit();
 
-            if (process.ExitCode != 0)
-            {
+            if (process.ExitCode != 0) {
                 string errorSummary = "FFmpeg failed to complete the operation.";
                 throw new Exception($"FFmpeg exited with code {process.ExitCode}. {errorSummary}");
             }
         }
 
-        static void OpenFolderAndSelectFile(string filePath)
-        {
-            try
-            {
+        static void OpenFolderAndSelectFile(string filePath) {
+            try {
                 string folder = Path.GetDirectoryName(filePath);
 
-                if (!File.Exists(filePath))
-                {
+                if (!File.Exists(filePath)) {
 
                     int attempts = 0;
-                    while (!File.Exists(filePath) && attempts < 10)
-                    {
+                    while (!File.Exists(filePath) && attempts < 10) {
                         System.Threading.Thread.Sleep(100);
                         attempts++;
                     }
 
-                    if (!File.Exists(filePath))
-                    {
+                    if (!File.Exists(filePath)) {
                         return;
                     }
                 }
 
                 bool usedExisting = false;
 
-                try
-                {
+                try {
                     Type shellAppType = Type.GetTypeFromProgID("Shell.Application");
                     dynamic shell = Activator.CreateInstance(shellAppType);
-                    foreach (dynamic window in shell.Windows())
-                    {
-                        try
-                        {
+                    foreach (dynamic window in shell.Windows()) {
+                        try {
                             string windowPath = new Uri((string)window.LocationURL).LocalPath;
                             if (string.Equals(windowPath.TrimEnd('\\'), folder.TrimEnd('\\'),
-                                    StringComparison.OrdinalIgnoreCase))
-                            {
+                                    StringComparison.OrdinalIgnoreCase)) {
                                 window.Document.SelectItem(filePath, 0);
                                 usedExisting = true;
                                 break;
                             }
                         }
-                        catch
-                        {
+                        catch {
                             continue;
                         }
                     }
                 }
-                catch
-                {
+                catch {
 
                 }
 
-                if (!usedExisting)
-                {
+                if (!usedExisting) {
 
                     System.Threading.Thread.Sleep(200);
 
-                    try
-                    {
+                    try {
                         IntPtr filePidl;
                         uint sfgao;
                         int hr = SHParseDisplayName(filePath, IntPtr.Zero, out filePidl, 0, out sfgao);
-                        if (hr != 0)
-                        {
+                        if (hr != 0) {
 
                             Process.Start("explorer.exe", folder);
                             return;
@@ -1816,8 +1620,7 @@ namespace FormatConverter
 
                         IntPtr folderPidl;
                         hr = SHParseDisplayName(folder, IntPtr.Zero, out folderPidl, 0, out sfgao);
-                        if (hr != 0)
-                        {
+                        if (hr != 0) {
                             CoTaskMemFree(filePidl);
 
                             Process.Start("explorer.exe", folder);
@@ -1833,33 +1636,27 @@ namespace FormatConverter
                         CoTaskMemFree(filePidl);
                         CoTaskMemFree(folderPidl);
 
-                        if (hr != 0)
-                        {
+                        if (hr != 0) {
 
                         }
                     }
-                    catch
-                    {
+                    catch {
 
                     }
                 }
             }
-            catch
-            {
+            catch {
 
-                try
-                {
+                try {
                     string folder = Path.GetDirectoryName(filePath);
                 }
-                catch
-                {
+                catch {
 
                 }
             }
         }
 
-        class ProgressForm : Form
-        {
+        class ProgressForm : Form {
             private Panel progressBarContainer;
             private Panel progressBarFill;
             private Label statusLabel;
@@ -1897,25 +1694,21 @@ namespace FormatConverter
             private const int HT_CAPTION = 0x2;
 
             public void SetProcessInfo(Process process, string outputPath, bool isReplacingFile = false,
-                string originalBackupPath = null)
-            {
+                string originalBackupPath = null) {
                 currentProcess = process;
                 outputFilePath = outputPath;
                 isReplacement = isReplacingFile;
                 backupFilePath = originalBackupPath;
             }
 
-            private void FormDragMouseDown(object sender, MouseEventArgs e)
-            {
-                if (e.Button == MouseButtons.Left)
-                {
+            private void FormDragMouseDown(object sender, MouseEventArgs e) {
+                if (e.Button == MouseButtons.Left) {
                     ReleaseCapture();
                     SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
                 }
             }
 
-            public ProgressForm()
-            {
+            public ProgressForm() {
                 this.Text = "Converting...";
                 this.TopMost = true;
                 this.ClientSize = new Size(360, 100);
@@ -1927,8 +1720,7 @@ namespace FormatConverter
 
                 this.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 8, 8));
 
-                percentLabel = new Label
-                {
+                percentLabel = new Label {
                     Text = "0%",
                     Width = 336,
                     Height = 20,
@@ -1939,8 +1731,7 @@ namespace FormatConverter
                     BackColor = Color.Transparent
                 };
 
-                progressBarContainer = new Panel
-                {
+                progressBarContainer = new Panel {
                     Width = 336,
                     Height = 6,
                     Location = new Point(12, 40),
@@ -1950,8 +1741,7 @@ namespace FormatConverter
                     Region.FromHrgn(CreateRoundRectRgn(0, 0, progressBarContainer.Width, progressBarContainer.Height, 3,
                         3));
 
-                progressBarFill = new Panel
-                {
+                progressBarFill = new Panel {
                     Width = 0,
                     Height = 6,
                     Location = new Point(0, 0),
@@ -1961,8 +1751,7 @@ namespace FormatConverter
                     Region.FromHrgn(CreateRoundRectRgn(0, 0, progressBarFill.Width, progressBarFill.Height, 3, 3));
                 progressBarContainer.Controls.Add(progressBarFill);
 
-                statusLabel = new Label
-                {
+                statusLabel = new Label {
                     Text = "Initializing...",
                     Width = 336,
                     Height = 20,
@@ -1979,8 +1768,7 @@ namespace FormatConverter
                 progressBarFill.MouseDown += FormDragMouseDown;
                 statusLabel.MouseDown += FormDragMouseDown;
 
-                Label closeButton = new Label
-                {
+                Label closeButton = new Label {
                     Text = "✕",
                     Size = new Size(24, 24),
                     Location = new Point(Width - 30, 8),
@@ -1990,15 +1778,13 @@ namespace FormatConverter
                     Cursor = Cursors.Hand,
                     BackColor = Color.Transparent
                 };
-                closeButton.Click += (s, e) =>
-                {
+                closeButton.Click += (s, e) => {
                     DialogResult result = MessageBox.Show(
                         "Are you sure you want to cancel the operation?",
                         "Cancel",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Question);
-                    if (result == DialogResult.Yes)
-                    {
+                    if (result == DialogResult.Yes) {
                         HandleCancellation();
                         this.Close();
                     }
@@ -2013,22 +1799,18 @@ namespace FormatConverter
 
                 closeButton.BringToFront();
 
-                this.FormClosing += (s, e) =>
-                {
-                    if (currentProcess != null && !currentProcess.HasExited)
-                    {
+                this.FormClosing += (s, e) => {
+                    if (currentProcess != null && !currentProcess.HasExited) {
                         DialogResult result = MessageBox.Show(
                             "Are you sure you want to cancel the operation?",
                             "Cancel",
                             MessageBoxButtons.YesNo,
                             MessageBoxIcon.Question);
 
-                        if (result == DialogResult.Yes)
-                        {
+                        if (result == DialogResult.Yes) {
                             HandleCancellation();
                         }
-                        else
-                        {
+                        else {
                             e.Cancel = true;
                         }
                     }
@@ -2044,10 +1826,8 @@ namespace FormatConverter
 
                 animationTimer = new System.Windows.Forms.Timer();
                 animationTimer.Interval = 16;
-                animationTimer.Tick += (sender, e) =>
-                {
-                    if (Math.Abs(currentProgress - targetProgress) > 0.1)
-                    {
+                animationTimer.Tick += (sender, e) => {
+                    if (Math.Abs(currentProgress - targetProgress) > 0.1) {
                         currentProgress += (targetProgress - currentProgress) * ANIMATION_SPEED;
                         UpdateVisualProgress((int)Math.Round(currentProgress));
                     }
@@ -2059,25 +1839,19 @@ namespace FormatConverter
 
             private bool wasCancelled = false;
 
-            public bool WasCancelled()
-            {
+            public bool WasCancelled() {
                 return wasCancelled;
             }
 
-            private void HandleCancellation()
-            {
-                try
-                {
+            private void HandleCancellation() {
+                try {
                     wasCancelled = true;
 
-                    if (currentProcess != null && !currentProcess.HasExited)
-                    {
-                        try
-                        {
+                    if (currentProcess != null && !currentProcess.HasExited) {
+                        try {
                             currentProcess.Kill(true);
                         }
-                        catch
-                        {
+                        catch {
 
                             currentProcess.Kill();
                         }
@@ -2085,56 +1859,45 @@ namespace FormatConverter
                         currentProcess = null;
                     }
 
-                    if (!string.IsNullOrEmpty(outputFilePath))
-                    {
-                        try
-                        {
+                    if (!string.IsNullOrEmpty(outputFilePath)) {
+                        try {
 
-                            if (File.Exists(outputFilePath))
-                            {
+                            if (File.Exists(outputFilePath)) {
                                 File.Delete(outputFilePath);
                             }
 
-                            if (isReplacement && !string.IsNullOrEmpty(backupFilePath) && File.Exists(backupFilePath))
-                            {
+                            if (isReplacement && !string.IsNullOrEmpty(backupFilePath) && File.Exists(backupFilePath)) {
                                 File.Move(backupFilePath, outputFilePath, true);
                             }
                         }
-                        catch (Exception ex)
-                        {
+                        catch (Exception ex) {
                             MessageBox.Show($"Warning: Could not clean up files: {ex.Message}", "Warning",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
+                catch (Exception ex) {
                     MessageBox.Show($"Error during cancellation: {ex.Message}", "Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
 
-            private void ProgressBarFill_Paint(object sender, PaintEventArgs e)
-            {
-                if (isErrorState)
-                {
+            private void ProgressBarFill_Paint(object sender, PaintEventArgs e) {
+                if (isErrorState) {
                     using (LinearGradientBrush brush = new LinearGradientBrush(
                                progressBarFill.ClientRectangle,
                                Color.FromArgb(255, 100, 100),
                                Color.FromArgb(200, 50, 50),
-                               LinearGradientMode.Horizontal))
-                    {
+                               LinearGradientMode.Horizontal)) {
                         e.Graphics.FillRectangle(brush, progressBarFill.ClientRectangle);
                     }
                 }
-                else
-                {
+                else {
                     using (LinearGradientBrush brush = new LinearGradientBrush(
                                progressBarFill.ClientRectangle,
                                Color.FromArgb(0, 198, 255),
                                Color.FromArgb(0, 114, 255),
-                               LinearGradientMode.Horizontal))
-                    {
+                               LinearGradientMode.Horizontal)) {
                         e.Graphics.FillRectangle(brush, progressBarFill.ClientRectangle);
                     }
 
@@ -2147,18 +1910,15 @@ namespace FormatConverter
                                new Rectangle(shimmerPosition, 0, shimmerWidth, progressBarFill.Height),
                                Color.FromArgb(0, Color.White),
                                Color.FromArgb(40, Color.White),
-                               LinearGradientMode.Horizontal))
-                    {
+                               LinearGradientMode.Horizontal)) {
                         e.Graphics.FillRectangle(shimmerBrush,
                             new Rectangle(shimmerPosition, 0, shimmerWidth, progressBarFill.Height));
                     }
                 }
             }
 
-            private void UpdateVisualProgress(int value)
-            {
-                if (InvokeRequired)
-                {
+            private void UpdateVisualProgress(int value) {
+                if (InvokeRequired) {
                     Invoke(new Action<int>(UpdateVisualProgress), value);
                     return;
                 }
@@ -2169,10 +1929,8 @@ namespace FormatConverter
                     Region.FromHrgn(CreateRoundRectRgn(0, 0, progressBarFill.Width, progressBarFill.Height, 3, 3));
             }
 
-            public void UpdateProgress(int value)
-            {
-                if (InvokeRequired)
-                {
+            public void UpdateProgress(int value) {
+                if (InvokeRequired) {
                     Invoke(new Action<int>(UpdateProgress), value);
                     return;
                 }
@@ -2180,32 +1938,25 @@ namespace FormatConverter
                 targetProgress = value;
                 percentLabel.Text = $"{value}%";
 
-                if (value >= 100)
-                {
+                if (value >= 100) {
                     statusLabel.Text = "Operation completed successfully!";
                 }
-                else if (value >= 75)
-                {
+                else if (value >= 75) {
                     statusLabel.Text = "Finalizing...";
                 }
-                else if (value >= 50)
-                {
+                else if (value >= 50) {
                     statusLabel.Text = "Processing...";
                 }
-                else if (value >= 25)
-                {
+                else if (value >= 25) {
                     statusLabel.Text = "Converting...";
                 }
-                else
-                {
+                else {
                     statusLabel.Text = "Preparing...";
                 }
             }
 
-            public void SetStatusText(string status)
-            {
-                if (InvokeRequired)
-                {
+            public void SetStatusText(string status) {
+                if (InvokeRequired) {
                     Invoke(new Action<string>(SetStatusText), status);
                     return;
                 }
@@ -2213,10 +1964,8 @@ namespace FormatConverter
                 statusLabel.Text = status;
             }
 
-            public void SetCompleted()
-            {
-                if (InvokeRequired)
-                {
+            public void SetCompleted() {
+                if (InvokeRequired) {
                     Invoke(new Action(SetCompleted));
                     return;
                 }
@@ -2227,10 +1976,8 @@ namespace FormatConverter
                 Close();
             }
 
-            public void SetError(string errorMessage)
-            {
-                if (InvokeRequired)
-                {
+            public void SetError(string errorMessage) {
+                if (InvokeRequired) {
                     Invoke(new Action<string>(SetError), errorMessage);
                     return;
                 }
@@ -2241,10 +1988,8 @@ namespace FormatConverter
                 progressBarFill.Invalidate();
             }
 
-            protected override void Dispose(bool disposing)
-            {
-                if (disposing)
-                {
+            protected override void Dispose(bool disposing) {
+                if (disposing) {
                     shimmerTimer?.Dispose();
                     animationTimer?.Dispose();
                 }
