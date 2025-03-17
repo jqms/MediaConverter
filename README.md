@@ -1,5 +1,6 @@
 # Format Converter
-## 🎬 Quick Media Conversion Utility for Windows
+## 🎮 Quick Media Conversion Utility for Windows
+
 ### Overview
 Format Converter is a lightweight Windows utility that seamlessly adds context menu options for converting media files between various formats. With just a right-click, you can quickly transform your audio, video, and image files.
 
@@ -12,16 +13,17 @@ Format Converter is a lightweight Windows utility that seamlessly adds context m
 - **Additional Tools**:
   - Mute audio/video files
   - Resize images (50% and 75%)
+  - **Compress audio/video files to specific sizes** (10MB, 20MB, 50MB, 100MB, 500MB)
 - **One-Click Installation**: Automatically sets up right-click context menus
 - **Administrator Privileges**: Ensures smooth system integration
 - **User-Friendly**: Detailed progress indicator during conversion
 
-### 🛠️ Requirements
+### 🧭 Requirements
 - Windows Operating System
 - FFmpeg installed and accessible in system PATH
 - .NET Framework
 
-### 📥 Getting FFmpeg
+### 💽 Getting FFmpeg
 Format Converter needs a helper program called FFmpeg to convert your files. Here's how to install it:
 
 #### Easiest Method: Install with Winget (Windows Package Manager)
@@ -46,7 +48,7 @@ If you prefer to install FFmpeg manually:
 2. **Extract the Files**:
    - Find the downloaded ZIP file in your Downloads folder
    - Right-click on it and select "Extract All..."
-   - Choose a location that's easy to remember, like "C:\ffmpeg"
+   - Choose a location that's easy to remember, like "C:\\ffmpeg"
    - Click "Extract"
 
 3. **Tell Windows Where to Find FFmpeg**:
@@ -54,7 +56,7 @@ If you prefer to install FFmpeg manually:
    - Click on "Advanced system settings" on the right
    - At the bottom of the new window, click "Environment Variables"
    - In the "System variables" box, find and click on "Path", then click "Edit"
-   - Click "New" and type in the path to the bin folder (e.g., "C:\ffmpeg\bin")
+   - Click "New" and type in the path to the bin folder (e.g., "C:\\ffmpeg\\bin")
    - Click "OK" on all open windows
 
 4. **Check if It Worked**:
@@ -89,6 +91,11 @@ FormatConverter.exe [input_file1] [input_file2] [...] [output_format]
 FormatConverter.exe [input_file] mute
 FormatConverter.exe [input_file] resize50
 FormatConverter.exe [input_file] resize75
+FormatConverter.exe [input_file] compress 10
+FormatConverter.exe [input_file] compress 20
+FormatConverter.exe [input_file] compress 50
+FormatConverter.exe [input_file] compress 100
+FormatConverter.exe [input_file] compress 500
 ```
 
 #### Uninstallation
@@ -137,6 +144,7 @@ FormatConverter.exe -unregister
 - Audio-to-video conversions create a black background
 - Images can be resized to 50% or 75% of original dimensions
 - Audio and video files can be muted (creates a new file with no sound)
+- **New Feature**: Audio and video files can be compressed to specific file sizes (10MB, 20MB, 50MB, 100MB, 500MB)
 - Converted files are saved in the same directory as the original with the new extension
 - Batch conversion supports multiple input files with a single output format
 
@@ -145,3 +153,4 @@ FormatConverter.exe -unregister
 - **Conversion fails**: Check if FFmpeg supports the specific conversion between your chosen formats
 - **Missing context menu**: Try running the application again with administrator privileges
 - **Slow conversion**: Some formats (like WEBM) may take longer to process due to compression requirements
+
