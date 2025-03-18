@@ -103,7 +103,31 @@ namespace FormatConverter {
                     gpuInfo.AppendLine("FFmpeg Hardware Accelerators:");
                     gpuInfo.AppendLine(output);
                     
-                    if (output.Contains("cuda") || output.Contains("nvenc"))
+                    if (output.Contains("nvenc"))
+                    {
+                        startInfo.Arguments = "-hide_banner -encoders | findstr nvenc";
+                        
+                        using (var versionProcess = Process.Start(startInfo))
+                        {
+                            string versionOutput = versionProcess.StandardOutput.ReadToEnd();
+                            versionProcess.WaitForExit();
+
+                            gpuInfo.AppendLine("NVENC API Version Information:");
+                            gpuInfo.AppendLine(versionOutput);
+
+                            if (versionOutput.Contains("nvenc") && !versionOutput.Contains("13.0"))
+                            {
+                                detectedGpu = "generic";
+                                gpuInfo.AppendLine("NVENC version is below 13.0, using generic settings.");
+                            }
+                            else
+                            {
+                                detectedGpu = "nvidia";
+                                gpuInfo.AppendLine("Detected NVIDIA GPU with NVENC API version >= 13.0");
+                            }
+                        }
+                    }
+                    else if (output.Contains("cuda"))
                     {
                         detectedGpu = "nvidia";
                         gpuInfo.AppendLine("Detected NVIDIA GPU via FFmpeg");
@@ -119,7 +143,7 @@ namespace FormatConverter {
                         gpuInfo.AppendLine("Detected Intel GPU via FFmpeg");
                     }
                 }
-                
+
                 if (detectedGpu == null)
                 {
                     startInfo = new ProcessStartInfo
@@ -170,7 +194,7 @@ namespace FormatConverter {
             
             gpuInfo.AppendLine($"\nFinal GPU Type: {detectedGpu}");
             
-            //MessageBox.Show(gpuInfo.ToString(), "GPU Detection Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(gpuInfo.ToString(), "GPU Detection Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
             
             return detectedGpu;
         }
@@ -955,6 +979,10 @@ namespace FormatConverter {
                 string currentInput = input;
                 string currentOutput = output;
 
+                string gpuType = DetectGpuType();
+                bool useGenericEncoder = false;
+                bool hardwareEncodingFailed = false;
+
                 while (!compressionSuccessful && compressionAttempt <= maxAttempts) {
                     if (compressionAttempt > 1) {
                         progressForm.BeginInvoke(new Action(() => {
@@ -963,6 +991,11 @@ namespace FormatConverter {
                         }));
                         currentInput = output;
                         currentOutput = tempOutputPath;
+                    }
+
+                    if (hardwareEncodingFailed) {
+                        gpuType = "generic";
+                        useGenericEncoder = true;
                     }
 
                     string inputExt = Path.GetExtension(currentInput).ToLower();
@@ -1001,8 +1034,6 @@ namespace FormatConverter {
                             if (videoBitrate < 500000) crf = Math.Min(32, crf + 5);
                             else if (videoBitrate < 1000000) crf = Math.Min(32, crf + 3);
                             else if (videoBitrate < 2000000) crf = Math.Min(32, crf + 1);
-
-                            string gpuType = DetectGpuType();
                             
                             switch (gpuType) {
                                 case "nvidia":
@@ -1049,8 +1080,6 @@ namespace FormatConverter {
                     else {
                         if (inputType == "video") {
                             int bitrate = targetSizeMB * 8000;
-                            
-                            string gpuType = DetectGpuType();
                             
                             switch (gpuType) {
                                 case "nvidia":
@@ -1104,6 +1133,12 @@ namespace FormatConverter {
                         if (string.IsNullOrEmpty(e.Data))
                             return;
 
+                        if (e.Data.Contains("Error code: -40") || 
+                            e.Data.Contains("Error code: -1094995529") || 
+                            e.Data.Contains("No CUDA capable device found")) {
+                            hardwareEncodingFailed = true;
+                        }
+
                         string data = e.Data;
 
                         if (totalDuration == TimeSpan.Zero) {
@@ -1153,6 +1188,19 @@ namespace FormatConverter {
                     ffmpegProcess.WaitForExit();
 
                     if (ffmpegProcess.ExitCode != 0 && !progressForm.WasCancelled()) {
+                        if (hardwareEncodingFailed && !useGenericEncoder) {
+                            useGenericEncoder = true;
+                            gpuType = "generic";
+
+                            try {
+                                if (File.Exists(currentOutput)) {
+                                    File.Delete(currentOutput);
+                                }
+                            }
+                            catch {}
+                            
+                            continue;
+                        }
                         throw new Exception($"FFmpeg exited with code {ffmpegProcess.ExitCode}");
                     }
 
@@ -1638,279 +1686,493 @@ namespace FormatConverter {
             }
         }
 
-        static void ConvertMedia(string input, string output) {
+        private static bool IsNvidiaVP9Capable()
+        {
+            try {
+                if (DetectGpuType() != "nvidia") 
+                    return false;
+                    
+                using (var process = new Process())
+                {
+                    process.StartInfo.FileName = "nvidia-smi";
+                    process.StartInfo.Arguments = "--query-gpu=driver_version --format=csv,noheader";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.CreateNoWindow = true;
+                    
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd().Trim();
+                    process.WaitForExit();
+                    
+                    if (process.ExitCode != 0)
+                        return false;
+                        
+                    Version version;
+                    if (Version.TryParse(output, out version)) {
+                        return version.Major >= 418;
+                    }
+                    
+                    return false;
+                }
+            }
+            catch {
+                return false;
+            }
+        }
+
+        private static bool IsIntelHEVCCapable()
+        {
+            try {
+                using (var process = new Process())
+                {
+                    process.StartInfo.FileName = "ffmpeg";
+                    process.StartInfo.Arguments = "-encoders";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.CreateNoWindow = true;
+                    
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit();
+                    
+                    return output.Contains("hevc_qsv");
+                }
+            }
+            catch {
+                return false;
+            }
+        }
+
+        private static bool IsIntelAV1Capable()
+        {
+            try {
+                using (var process = new Process())
+                {
+                    process.StartInfo.FileName = "ffmpeg";
+                    process.StartInfo.Arguments = "-encoders";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.CreateNoWindow = true;
+                    
+                    process.Start();
+                    string output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit();
+                    
+                    return output.Contains("av1_qsv");
+                }
+            }
+            catch {
+                return false;
+            }
+        }
+
+        static void ConvertMedia(string input, string output)
+        {
             string inputExt = Path.GetExtension(input).ToLower();
             string outputExt = Path.GetExtension(output).ToLower();
             var (inputType, _) = FormatMappings[inputExt];
-            string arguments = "";
+            bool useGenericEncoder = false;
+            bool retryWithGeneric = false;
 
-            if (inputType == "image") {
-                switch (outputExt) {
-                    case ".webp":
-                        arguments = $"-i \"{input}\" -quality 90 -compression_level 6 \"{output}\"";
-                        break;
-                    case ".jpg":
-                    case ".jpeg":
-                        arguments = $"-i \"{input}\" -quality 95 \"{output}\"";
-                        break;
-                    case ".png":
-                        arguments = $"-i \"{input}\" -compression_level 9 \"{output}\"";
-                        break;
-                    case ".tiff":
-                        arguments = $"-i \"{input}\" -compression_algo lzw \"{output}\"";
-                        break;
-                    case ".gif":
-                        if (inputExt == ".gif") {
+            do
+            {
+                string arguments = "";
 
-                            arguments =
-                                $"-i \"{input}\" -lavfi \"fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos\" \"{output}\"";
-                        }
-                        else {
+
+                if (inputType == "image")
+                {
+                    switch (outputExt)
+                    {
+                        case ".webp":
+                            arguments = $"-i \"{input}\" -quality 90 -compression_level 6 \"{output}\"";
+                            break;
+                        case ".jpg":
+                        case ".jpeg":
+                            arguments = $"-i \"{input}\" -quality 95 \"{output}\"";
+                            break;
+                        case ".png":
+                            arguments = $"-i \"{input}\" -compression_level 9 \"{output}\"";
+                            break;
+                        case ".tiff":
+                            arguments = $"-i \"{input}\" -compression_algo lzw \"{output}\"";
+                            break;
+                        case ".gif":
+                            if (inputExt == ".gif")
+                            {
+
+                                arguments =
+                                    $"-i \"{input}\" -lavfi \"fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos\" \"{output}\"";
+                            }
+                            else
+                            {
+                                arguments = $"-i \"{input}\" \"{output}\"";
+                            }
+
+                            break;
+                        case ".bmp":
+                            arguments = $"-i \"{input}\" -pix_fmt rgb24 \"{output}\"";
+                            break;
+                        case ".ico":
+                            arguments = $"-i \"{input}\" -vf scale=256:256 \"{output}\"";
+                            break;
+                        case ".heic":
+                            arguments = $"-i \"{input}\" -quality 90 \"{output}\"";
+                            break;
+                        default:
                             arguments = $"-i \"{input}\" \"{output}\"";
-                        }
-
-                        break;
-                    case ".bmp":
-                        arguments = $"-i \"{input}\" -pix_fmt rgb24 \"{output}\"";
-                        break;
-                    case ".ico":
-                        arguments = $"-i \"{input}\" -vf scale=256:256 \"{output}\"";
-                        break;
-                    case ".heic":
-                        arguments = $"-i \"{input}\" -quality 90 \"{output}\"";
-                        break;
-                    default:
-                        arguments = $"-i \"{input}\" \"{output}\"";
-                        break;
+                            break;
+                    }
                 }
-            }
-            else if (inputType == "audio") {
-                switch (outputExt) {
-                    case ".mp3":
-                        arguments = $"-i \"{input}\" -vn -codec:a libmp3lame -q:a 0 \"{output}\"";
-                        break;
-                    case ".m4a":
-                        arguments = $"-i \"{input}\" -vn -c:a aac -b:a 256k \"{output}\"";
-                        break;
-                    case ".flac":
-                        arguments = $"-i \"{input}\" -vn -codec:a flac -compression_level 12 \"{output}\"";
-                        break;
-                    case ".opus":
-                        arguments = $"-i \"{input}\" -vn -c:a libopus -b:a 192k \"{output}\"";
-                        break;
-                    case ".ogg":
-                        arguments = $"-i \"{input}\" -vn -c:a libvorbis -q:a 7 \"{output}\"";
-                        break;
-                    case ".wav":
-                        arguments = $"-i \"{input}\" -vn -c:a pcm_s24le \"{output}\"";
-                        break;
-                    case ".wma":
-                        arguments = $"-i \"{input}\" -vn -c:a wmav2 -b:a 256k \"{output}\"";
-                        break;
-                    case ".aac":
-                        arguments = $"-i \"{input}\" -vn -c:a aac -b:a 256k \"{output}\"";
-                        break;
-                    case ".ac3":
-                        arguments = $"-i \"{input}\" -vn -c:a ac3 -b:a 448k \"{output}\"";
-                        break;
-                    default:
-                        arguments = $"-i \"{input}\" -vn \"{output}\"";
-                        break;
+                else if (inputType == "audio")
+                {
+                    switch (outputExt)
+                    {
+                        case ".mp3":
+                            arguments = $"-i \"{input}\" -vn -codec:a libmp3lame -q:a 0 \"{output}\"";
+                            break;
+                        case ".m4a":
+                            arguments = $"-i \"{input}\" -vn -c:a aac -b:a 256k \"{output}\"";
+                            break;
+                        case ".flac":
+                            arguments = $"-i \"{input}\" -vn -codec:a flac -compression_level 12 \"{output}\"";
+                            break;
+                        case ".opus":
+                            arguments = $"-i \"{input}\" -vn -c:a libopus -b:a 192k \"{output}\"";
+                            break;
+                        case ".ogg":
+                            arguments = $"-i \"{input}\" -vn -c:a libvorbis -q:a 7 \"{output}\"";
+                            break;
+                        case ".wav":
+                            arguments = $"-i \"{input}\" -vn -c:a pcm_s24le \"{output}\"";
+                            break;
+                        case ".wma":
+                            arguments = $"-i \"{input}\" -vn -c:a wmav2 -b:a 256k \"{output}\"";
+                            break;
+                        case ".aac":
+                            arguments = $"-i \"{input}\" -vn -c:a aac -b:a 256k \"{output}\"";
+                            break;
+                        case ".ac3":
+                            arguments = $"-i \"{input}\" -vn -c:a ac3 -b:a 448k \"{output}\"";
+                            break;
+                        default:
+                            arguments = $"-i \"{input}\" -vn \"{output}\"";
+                            break;
+                    }
                 }
-            }
-            else if (inputType == "video") {
-                string videoCodec, audioCodec, extraParams = "";
-                string baseCodec = "h264";
-                string gpuType = DetectGpuType();
-                string hwAccelParams = "";
+                else if (inputType == "video")
+                {
+                    string videoCodec, audioCodec, extraParams = "";
+                    string baseCodec = "h264";
+                    string gpuType = useGenericEncoder ? "generic" : DetectGpuType();
+                    string hwAccelParams = "";
 
-                switch (outputExt) {
-                    case ".mp4":
-                        videoCodec = "-c:v libx264 -crf 23 -preset medium";
-                        audioCodec = "-c:a aac -b:a 192k";
-                        extraParams = "-movflags +faststart";
-                        break;
-                    case ".mkv":
-                        videoCodec = "-c:v libx264 -crf 21 -preset slower";
-                        audioCodec = "-c:a libopus -b:a 192k";
-                        extraParams = "";
-                        break;
-                    case ".webm":
-                        videoCodec = "-c:v libvpx-vp9 -crf 30 -b:v 0";
-                        audioCodec = "-c:a libopus -b:a 128k";
-                        extraParams = "-deadline good -cpu-used 2";
-                        break;
-                    case ".avi":
-                        videoCodec = "-c:v mpeg4 -qscale:v 3";
-                        audioCodec = "-c:a mp3 -q:a 3";
-                        extraParams = "";
-                        break;
-                    case ".wmv":
-                        videoCodec = "-c:v wmv2 -qscale:v 3";
-                        audioCodec = "-c:a wmav2 -b:a 256k";
-                        extraParams = "";
-                        break;
-                    case ".flv":
-                        videoCodec = "-c:v flv -qscale:v 3";
-                        audioCodec = "-c:a mp3 -q:a 3";
-                        extraParams = "";
-                        break;
-                    case ".mov":
-                        videoCodec = "-c:v prores_ks -profile:v 3";
-                        audioCodec = "-c:a pcm_s24le";
-                        extraParams = "";
-                        break;
-                    case ".ts":
-                        videoCodec = "-c:v libx264 -crf 23 -preset medium";
-                        audioCodec = "-c:a aac -b:a 192k";
-                        extraParams = "-f mpegts";
-                        break;
-                    case ".3gp":
-                        videoCodec = "-c:v libx264 -crf 28 -preset faster -profile:v baseline -level 3.0";
-                        audioCodec = "-c:a aac -b:a 128k -ac 2";
-                        extraParams = "";
-                        break;
-                    case ".mp3":
-                        videoCodec = "-vn";
-                        audioCodec = "-codec:a libmp3lame -q:a 0";
-                        extraParams = "";
-                        break;
-                    case ".m4a":
-                        videoCodec = "-vn";
-                        audioCodec = "-c:a aac -b:a 256k";
-                        extraParams = "";
-                        break;
-                    default:
-                        videoCodec = "-c:v libx264 -crf 23";
-                        audioCodec = "-c:a aac -b:a 192k";
-                        extraParams = "";
-                        break;
-                }
+                    switch (outputExt)
+                    {
+                        case ".mp4":
+                            videoCodec = "-c:v libx264 -crf 23 -preset medium";
+                            audioCodec = "-c:a aac -b:a 192k";
+                            extraParams = "-movflags +faststart";
+                            break;
+                        case ".mkv":
+                            videoCodec = "-c:v libx264 -crf 21 -preset slower";
+                            audioCodec = "-c:a libopus -b:a 192k";
+                            extraParams = "";
+                            break;
+                        case ".webm":
+                            videoCodec = "-c:v libvpx-vp9 -crf 30 -b:v 0";
+                            audioCodec = "-c:a libopus -b:a 128k";
+                            extraParams = "-deadline good -cpu-used 2";
+                            break;
+                        case ".avi":
+                            videoCodec = "-c:v mpeg4 -qscale:v 3";
+                            audioCodec = "-c:a mp3 -q:a 3";
+                            extraParams = "";
+                            break;
+                        case ".wmv":
+                            videoCodec = "-c:v wmv2 -qscale:v 3";
+                            audioCodec = "-c:a wmav2 -b:a 256k";
+                            extraParams = "";
+                            break;
+                        case ".flv":
+                            videoCodec = "-c:v flv -qscale:v 3";
+                            audioCodec = "-c:a mp3 -q:a 3";
+                            extraParams = "";
+                            break;
+                        case ".mov":
+                            videoCodec = "-c:v libx264 -crf 18";
+                            audioCodec = "-c:a aac -b:a 320k";
+                            extraParams = "";
+                            break;
+                        case ".ts":
+                            videoCodec = "-c:v libx264 -crf 23 -preset medium";
+                            audioCodec = "-c:a aac -b:a 192k";
+                            extraParams = "-f mpegts";
+                            break;
+                        case ".3gp":
+                            videoCodec = "-c:v libx264 -crf 28 -preset faster -profile:v baseline -level 3.0";
+                            audioCodec = "-c:a aac -b:a 128k -ac 2";
+                            extraParams = "";
+                            break;
+                        case ".mp3":
+                            videoCodec = "-vn";
+                            audioCodec = "-codec:a libmp3lame -q:a 0";
+                            extraParams = "";
+                            break;
+                        case ".m4a":
+                            videoCodec = "-vn";
+                            audioCodec = "-c:a aac -b:a 256k";
+                            extraParams = "";
+                            break;
+                        default:
+                            videoCodec = "-c:v libx264 -crf 23";
+                            audioCodec = "-c:a aac -b:a 192k";
+                            extraParams = "";
+                            break;
+                    }
 
-                if (!outputExt.Equals(".mp3") && !outputExt.Equals(".m4a") && !videoCodec.Contains("-vn")) {
-                    bool isH264 = videoCodec.Contains("libx264");
-                    bool isVP9 = videoCodec.Contains("libvpx-vp9");
-                    
-                    switch (gpuType) {
-                        case "nvidia":
-                            if (isH264) {
-                                string qualityParams = "";
-                                if (videoCodec.Contains("-preset")) {
-                                    qualityParams = "-preset p2";
+                    if (!outputExt.Equals(".mp3") && !outputExt.Equals(".m4a") && !videoCodec.Contains("-vn"))
+                    {
+                        bool isH264 = videoCodec.Contains("libx264");
+                        bool isVP9 = videoCodec.Contains("libvpx-vp9");
+                        bool isHEVC = videoCodec.Contains("libx265");
+
+                        switch (gpuType)
+                        {
+                            case "nvidia":
+                                string hwAccel = "-hwaccel cuda";
+
+                                if (isH264)
+                                {
+                                    string qualityParams = "";
+                                    if (videoCodec.Contains("-preset"))
+                                    {
+                                        qualityParams = "-preset p2";
+                                    }
+
+                                    videoCodec = videoCodec.Replace("-c:v libx264", $"{hwAccel} -c:v h264_nvenc")
+                                        .Replace("-crf 23", "")
+                                        .Replace("-crf 21", "")
+                                        .Replace("-crf 18", "")
+                                        .Replace("-crf 28", "")
+                                        .Replace("-preset medium", "")
+                                        .Replace("-preset slower", "")
+                                        .Replace("-preset faster", "") + " " + qualityParams;
                                 }
-                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel cuda -c:v h264_nvenc")
-                                                    .Replace("-crf 23", "")
-                                                    .Replace("-preset medium", "")
-                                                    .Replace("-preset slower", "")
-                                                    .Replace("-preset faster", "") + " " + qualityParams;
-                            }
-                            break;
-                        case "amd":
-                            if (isH264) {
-                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel d3d11va -c:v h264_amf")
-                                                    .Replace("-crf 23", "")
-                                                    .Replace("-crf 21", "")
-                                                    .Replace("-crf 28", "")
-                                                    .Replace("-preset medium", "-quality balanced")
-                                                    .Replace("-preset slower", "-quality quality")
-                                                    .Replace("-preset faster", "-quality speed");
-                            }
-                            break;
-                        case "intel":
-                            if (isH264) {
-                                string speedPreset = "-preset medium";
-                                if (videoCodec.Contains("-preset slower")) speedPreset = "-preset slow";
-                                if (videoCodec.Contains("-preset faster")) speedPreset = "-preset fast";
-                                
-                                videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel qsv -c:v h264_qsv")
-                                                    .Replace("-crf 23", "")
-                                                    .Replace("-crf 21", "")
-                                                    .Replace("-crf 28", "")
-                                                    .Replace("-preset medium", speedPreset)
-                                                    .Replace("-preset slower", speedPreset)
-                                                    .Replace("-preset faster", speedPreset);
-                            }
-                            break;
-                    }
-                }
+                                else if (isVP9 && IsNvidiaVP9Capable())
+                                {
+                                    videoCodec = videoCodec.Replace("-c:v libvpx-vp9", $"{hwAccel} -c:v vp9_nvenc")
+                                        .Replace("-crf 30", "-b:v 2M")
+                                        .Replace("-deadline good -cpu-used 2", "");
+                                }
+                                else if (isHEVC)
+                                {
+                                    videoCodec = videoCodec.Replace("-c:v libx265", $"{hwAccel} -c:v hevc_nvenc")
+                                        .Replace("-crf 23", "-b:v 5M")
+                                        .Replace("-preset medium", "-preset p2")
+                                        .Replace("-preset slower", "-preset p1")
+                                        .Replace("-preset faster", "-preset p4");
+                                }
 
-                arguments = $"-i \"{input}\" {videoCodec} {audioCodec} {extraParams} \"{output}\"";
-
-                if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a") {
-                    arguments =
-                        $"-i \"{input}\" -f lavfi -i color=c=black:s=1920x1080 -shortest {videoCodec} {audioCodec} {extraParams} \"{output}\"";
-                }
-            }
-
-            var startInfo = new ProcessStartInfo {
-                FileName = "ffmpeg",
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                LoadUserProfile = false,
-                ErrorDialog = false,
-                WorkingDirectory = Path.GetDirectoryName(output),
-                StandardErrorEncoding = System.Text.Encoding.UTF8
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-
-            TimeSpan duration = TimeSpan.Zero;
-            TimeSpan currentTime = TimeSpan.Zero;
-
-            process.ErrorDataReceived += (sender, e) => {
-                if (string.IsNullOrEmpty(e.Data))
-                    return;
-
-                string data = e.Data;
-
-                if (duration == TimeSpan.Zero) {
-                    var durationMatch =
-                        System.Text.RegularExpressions.Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
-                    if (durationMatch.Success) {
-                        int hours = int.Parse(durationMatch.Groups[1].Value);
-                        int minutes = int.Parse(durationMatch.Groups[2].Value);
-                        int seconds = int.Parse(durationMatch.Groups[3].Value);
-                        int milliseconds = int.Parse(durationMatch.Groups[4].Value) * 10;
-                        duration = new TimeSpan(0, hours, minutes, seconds, milliseconds);
-                    }
-                }
-
-                var timeMatch = System.Text.RegularExpressions.Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
-                if (timeMatch.Success) {
-                    int hours = int.Parse(timeMatch.Groups[1].Value);
-                    int minutes = int.Parse(timeMatch.Groups[2].Value);
-                    int seconds = int.Parse(timeMatch.Groups[3].Value);
-                    int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
-                    currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
-
-                    if (duration != TimeSpan.Zero) {
-                        int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
-                        percentage = Math.Min(99, Math.Max(0, percentage));
-
-                        var forms = Application.OpenForms;
-                        foreach (Form form in forms) {
-                            if (form is ProgressForm progressForm) {
-                                progressForm.BeginInvoke(new Action(() => {
-                                    progressForm.UpdateProgress(percentage);
-                                }));
                                 break;
+
+                            case "amd":
+                                if (isH264)
+                                {
+                                    videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel d3d11va -c:v h264_amf")
+                                        .Replace("-crf 23", "")
+                                        .Replace("-crf 21", "")
+                                        .Replace("-crf 18", "")
+                                        .Replace("-crf 28", "")
+                                        .Replace("-preset medium", "-quality balanced")
+                                        .Replace("-preset slower", "-quality quality")
+                                        .Replace("-preset faster", "-quality speed");
+                                }
+                                else if (isHEVC)
+                                {
+                                    videoCodec = videoCodec.Replace("-c:v libx265", "-hwaccel d3d11va -c:v hevc_amf")
+                                        .Replace("-crf 23", "")
+                                        .Replace("-crf 21", "")
+                                        .Replace("-preset medium", "-quality balanced")
+                                        .Replace("-preset slower", "-quality quality")
+                                        .Replace("-preset faster", "-quality speed");
+                                }
+
+                                break;
+
+                            case "intel":
+                                if (isH264)
+                                {
+                                    string speedPreset = "-preset medium";
+                                    if (videoCodec.Contains("-preset slower")) speedPreset = "-preset slow";
+                                    if (videoCodec.Contains("-preset faster")) speedPreset = "-preset fast";
+
+                                    videoCodec = videoCodec.Replace("-c:v libx264", "-hwaccel qsv -c:v h264_qsv")
+                                        .Replace("-crf 23", "")
+                                        .Replace("-crf 21", "")
+                                        .Replace("-crf 18", "")
+                                        .Replace("-crf 28", "")
+                                        .Replace("-preset medium", speedPreset)
+                                        .Replace("-preset slower", speedPreset)
+                                        .Replace("-preset faster", speedPreset);
+                                }
+                                else if (isHEVC && IsIntelHEVCCapable())
+                                {
+                                    string speedPreset = "-preset medium";
+                                    videoCodec = videoCodec.Replace("-c:v libx265", "-hwaccel qsv -c:v hevc_qsv")
+                                        .Replace("-crf 23", "")
+                                        .Replace("-crf 21", "")
+                                        .Replace("-preset medium", speedPreset)
+                                        .Replace("-preset slower", "-preset slow")
+                                        .Replace("-preset faster", "-preset fast");
+                                }
+                                else if (videoCodec.Contains("libaom-av1") && IsIntelAV1Capable())
+                                {
+                                    videoCodec = videoCodec.Replace("-c:v libaom-av1", "-hwaccel qsv -c:v av1_qsv");
+                                }
+
+                                break;
+                            default:
+                                if (isH264)
+                                {
+                                    videoCodec = "-c:v libx264 -crf 23 -preset medium";
+                                }
+                                else if (isHEVC)
+                                {
+                                    videoCodec = "-c:v libx265 -crf 28 -preset medium";
+                                }
+                                else if (isVP9)
+                                {
+                                    videoCodec = "-c:v libvpx-vp9 -crf 30 -b:v 0 -deadline good -cpu-used 2";
+                                }
+
+                                break;
+                        }
+                    }
+
+                    arguments = $"-i \"{input}\" {videoCodec} {audioCodec} {extraParams} \"{output}\"";
+
+                    if (inputType == "audio" && outputExt != ".mp3" && outputExt != ".m4a")
+                    {
+                        arguments =
+                            $"-i \"{input}\" -f lavfi -i color=c=black:s=1920x1080 -shortest {videoCodec} {audioCodec} {extraParams} \"{output}\"";
+                    }
+                }
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "ffmpeg",
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    LoadUserProfile = false,
+                    ErrorDialog = false,
+                    WorkingDirectory = Path.GetDirectoryName(output),
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+
+                using var process = new Process { StartInfo = startInfo };
+
+                TimeSpan duration = TimeSpan.Zero;
+                TimeSpan currentTime = TimeSpan.Zero;
+                System.Text.StringBuilder errorOutput = new System.Text.StringBuilder();
+                process.ErrorDataReceived += (sender, e) =>
+                {
+                    if (string.IsNullOrEmpty(e.Data))
+                        return;
+
+                    string data = e.Data;
+
+                    errorOutput.AppendLine(e.Data);
+
+                    if (e.Data.Contains("Error code: -40") || e.Data.Contains("Error code: -1094995529"))
+                    {
+                        useGenericEncoder = true;
+                    }
+
+                    if (duration == TimeSpan.Zero)
+                    {
+                        var durationMatch =
+                            System.Text.RegularExpressions.Regex.Match(data, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
+                        if (durationMatch.Success)
+                        {
+                            int hours = int.Parse(durationMatch.Groups[1].Value);
+                            int minutes = int.Parse(durationMatch.Groups[2].Value);
+                            int seconds = int.Parse(durationMatch.Groups[3].Value);
+                            int milliseconds = int.Parse(durationMatch.Groups[4].Value) * 10;
+                            duration = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+                        }
+                    }
+
+                    var timeMatch = System.Text.RegularExpressions.Regex.Match(data, @"time=(\d+):(\d+):(\d+)\.(\d+)");
+                    if (timeMatch.Success)
+                    {
+                        int hours = int.Parse(timeMatch.Groups[1].Value);
+                        int minutes = int.Parse(timeMatch.Groups[2].Value);
+                        int seconds = int.Parse(timeMatch.Groups[3].Value);
+                        int milliseconds = int.Parse(timeMatch.Groups[4].Value) * 10;
+                        currentTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
+
+                        if (duration != TimeSpan.Zero)
+                        {
+                            int percentage = (int)((currentTime.TotalMilliseconds / duration.TotalMilliseconds) * 100);
+                            percentage = Math.Min(99, Math.Max(0, percentage));
+
+                            var forms = Application.OpenForms;
+                            foreach (Form form in forms)
+                            {
+                                if (form is ProgressForm progressForm)
+                                {
+                                    progressForm.BeginInvoke(new Action(() =>
+                                    {
+                                        progressForm.UpdateProgress(percentage);
+                                    }));
+                                    break;
+                                }
                             }
                         }
                     }
+                };
+
+                process.Start();
+                process.BeginErrorReadLine();
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    if ((useGenericEncoder || errorOutput.ToString().Contains("No CUDA capable device found"))
+                        && !retryWithGeneric && !useGenericEncoder)
+                    {
+
+                        try
+                        {
+                            if (File.Exists(output))
+                            {
+                                File.Delete(output);
+                            }
+                        }
+                        catch
+                        {
+                        }
+
+                        useGenericEncoder = true;
+                        retryWithGeneric = true;
+
+                        Console.WriteLine("Hardware acceleration error detected. Falling back to software encoding.");
+                    }
+
+                    string errorSummary = "FFmpeg failed to complete the operation.";
+                    if (useGenericEncoder)
+                    {
+                        errorSummary = "Hardware acceleration error occurred. Try updating your graphics drivers.";
+                    }
+
+                    throw new Exception($"FFmpeg exited with code {process.ExitCode}. {errorSummary}");
                 }
-            };
 
-            process.Start();
-            process.BeginErrorReadLine();
-            process.WaitForExit();
-
-            if (process.ExitCode != 0) {
-                string errorSummary = "FFmpeg failed to complete the operation.";
-                throw new Exception($"FFmpeg exited with code {process.ExitCode}. {errorSummary}");
-            }
+                break;
+            } while (retryWithGeneric);
         }
 
         static void OpenFolderAndSelectFile(string filePath) {
